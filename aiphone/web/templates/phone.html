@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Phone & ATA{% endblock %}
+{% block content %}
+<h1>Phone &amp; ATA</h1>
+<p>Your analogue phone connects to a Grandstream HT801/HT802 adapter (ATA). The ATA registers with this server like a SIP phone. Change the values here and AI-Phone updates Asterisk for you.</p>
+
+<form method="post" action="/phone">
+<section class="card">
+  <h2>Phone ports</h2>
+  <table class="list">
+    <thead><tr><th>On</th><th>Name</th><th>SIP username</th><th>SIP password</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for l in s.lines %}
+    {% set st = (status.lines|selectattr('id', 'equalto', l.id)|list or [{}])[0] %}
+    <tr>
+      <td><input type="checkbox" name="{{ l.id }}_enabled" {{ 'checked' if l.enabled }}></td>
+      <td><input name="{{ l.id }}_label" value="{{ l.label }}"></td>
+      <td><input name="{{ l.id }}_username" value="{{ l.username }}"></td>
+      <td><input name="{{ l.id }}_password" value="{{ l.password }}" class="mono">
+          <label class="check small"><input type="checkbox" name="{{ l.id }}_regen"> new random password</label></td>
+      <td>{% if not l.enabled %}<span class="pill">off</span>{% elif st.registered %}<span class="pill ok">connected</span> <span class="small muted">{{ st.ip }}</span>{% else %}<span class="pill warn">not connected</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<section class="card">
+  <h2>Dialling</h2>
+  <div class="row">
+    <label>Default number (auto-dialled)
+      <select name="default_extension">{% for p in profiles %}<option value="{{ p.extension }}" {{ 'selected' if p.extension == s.default_extension }}>{{ p.extension }} · {{ p.name }}</option>{% endfor %}</select></label>
+    <label>Auto-dial delay in the ATA (s) <input type="number" name="autodial_delay" value="{{ s.autodial_delay }}" min="0" max="30"></label>
+    <label>Echo test number <input name="echo_test_extension" value="{{ s.echo_test_extension }}"></label>
+  </div>
+  <p class="help">With a delay of {{ s.autodial_delay }} s you hear a dial tone and can still dial another number (e.g. 1 for Claude). Wait, and the default AI answers.</p>
+  <div class="row">
+    <label>Ring for (s) when AI-Phone calls you <input type="number" name="ring_timeout" value="{{ s.ring_timeout }}" min="5" max="120"></label>
+    <label>Caller name shown <input name="outbound_caller_name" value="{{ s.outbound_caller_name }}"></label>
+    <label>Caller number shown <input name="outbound_caller_number" value="{{ s.outbound_caller_number }}"></label>
+  </div>
+</section>
+<section class="card">
+  <h2>Network</h2>
+  <div class="row">
+    <label>Server IP address <input name="server_ip" value="{{ s.server_ip }}" placeholder="{{ server_ip }} (detected)"></label>
+    <label>SIP port <input type="number" name="sip_port" value="{{ s.sip_port }}"></label>
+    <label>RTP ports from <input type="number" name="rtp_start" value="{{ s.rtp_start }}"></label>
+    <label>to <input type="number" name="rtp_end" value="{{ s.rtp_end }}"></label>
+    <label>Codecs <input name="codecs" value="{{ s.codecs }}"></label>
+  </div>
+  <p class="help">Give the VM a fixed IP address (or a DHCP reservation) so the ATA can always find it.</p>
+</section>
+<div class="actions"><button>Save and apply to Asterisk</button></div>
+</form>
+
+<section class="card">
+  <h2>Grandstream HT801 / HT802 setup guide</h2>
+  <ol class="guide">
+    <li>Find the ATA's IP address: lift the handset and dial <code>***</code>, then <code>02</code>; it reads the address out. Open <code>http://&lt;ATA address&gt;</code> in a browser (default password <code>admin</code>, or the one on the sticker).</li>
+    <li>For each port you use, open the <strong>FXS Port 1</strong> (or <strong>FXS Port 2</strong>) tab and fill in:</li>
+  </ol>
+  <div class="grid">
+  {% for l in s.lines if l.enabled %}
+  <table class="kv copy">
+    <caption>{{ l.label }}{% if s.lines|length > 1 %} → FXS Port {{ loop.index }}{% endif %}</caption>
+    <tr><th>Account Active</th><td>Yes</td></tr>
+    <tr><th>Primary SIP Server</th><td><code>{{ s.server_ip or server_ip }}{% if s.sip_port != 5060 %}:{{ s.sip_port }}{% endif %}</code></td></tr>
+    <tr><th>SIP User ID</th><td><code>{{ l.username }}</code></td></tr>
+    <tr><th>Authenticate ID</th><td><code>{{ l.username }}</code></td></tr>
+    <tr><th>Authenticate Password</th><td><code>{{ l.password }}</code></td></tr>
+    <tr><th>Name</th><td><code>{{ l.label }}</code></td></tr>
+    <tr><th>SIP Registration</th><td>Yes</td></tr>
+    <tr><th>Offhook Auto-Dial</th><td><code>{{ s.default_extension }}</code></td></tr>
+    <tr><th>Offhook Auto-Dial Delay</th><td><code>{{ s.autodial_delay }}</code></td></tr>
+    <tr><th>Preferred Vocoder</th><td>PCMU first, then PCMA</td></tr>
+    <tr><th>Enable Pulse Dialing</th><td>Yes (for a rotary dial such as the PTT T65)</td></tr>
+    <tr><th>Enable Line Echo Canceller (LEC)</th><td>Yes</td></tr>
+    <tr><th>Impedance / SLIC Setting</th><td>European / CTR21 instead of 600 Ω</td></tr>
+    <tr><th>Ring Frequency</th><td>25 Hz (Europe)</td></tr>
+    <tr><th>Use # as Dial Key</th><td>Yes</td></tr>
+    <tr><th>No Key Entry Timeout</th><td>3</td></tr>
+  </table>
+  {% endfor %}
+  </div>
+  <ol class="guide" start="3">
+    <li>Click <strong>Apply</strong>. The status above turns <span class="pill ok">connected</span> within a minute.</li>
+    <li>Test: dial <code>{{ s.echo_test_extension }}</code> and you should hear yourself. Then hang up, lift the handset and wait: the default AI answers.</li>
+    <li>For a rotary phone, "Enable Pulse Dialing" lets you dial numbers like 1 or 2 within the auto-dial delay.</li>
+  </ol>
+  <p class="muted small">Field names can differ slightly between firmware versions. If the ATA doesn't register, check the System log page.</p>
+</section>
+{% endblock %}

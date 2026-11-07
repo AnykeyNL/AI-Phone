@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Outbound calls{% endblock %}
+{% block content %}
+<h1>Outbound calls</h1>
+<p>AI-Phone can ring your phone to read out a message or to start a conversation. Ring it now, on a schedule, or from another system with a webhook.</p>
+
+<section class="card">
+  <h2>Ring the phone now</h2>
+  {% set form_call = {"line": lines[0].id, "profile_id": None, "mode": "message", "text": "", "allow_reply": True, "retries": 0, "retry_delay": 300} %}
+  <form method="post" action="/outbound/call">
+    {% with call = form_call %}{% include "_call_fields.html" %}{% endwith %}
+    <button>Ring</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Schedules</h2>
+  <p class="muted small">Times are in the server's time zone ({{ timezone }}, now {{ now }}).</p>
+  {% if schedules %}
+  <table class="list">
+    <thead><tr><th>Name</th><th>When</th><th>What</th><th>Next call</th><th></th></tr></thead>
+    <tbody>
+    {% for s in schedules %}
+    <tr>
+      <td>{{ s.name }} {% if not s.enabled %}<span class="pill">off</span>{% endif %}</td>
+      <td>{{ describe_schedule(s) }}</td>
+      <td class="small">{{ s.call.mode }}: {{ s.call.text|truncate(60) }}</td>
+      <td>{{ s.next_run|fmt_time if s.next_run else '—' }}</td>
+      <td class="nowrap"><a href="/schedules/{{ s.id }}">edit</a>
+        <form method="post" action="/schedules/{{ s.id }}/run" class="inline"><button class="link">run now</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No schedules yet.</p>{% endif %}
+  <p><a class="button" href="/schedules/new">Add a schedule</a></p>
+</section>
+
+<section class="card">
+  <h2>Webhook</h2>
+  <p>Any system that can open a URL (Home Assistant, a cron job, IFTTT, a doorbell…) can make the phone ring:</p>
+  <pre class="mono wrap">curl -X POST {{ base_url }}/api/webhook/{{ token }} \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Someone is at the front door.", "mode": "message"}'</pre>
+  <p>Or simply open: <code class="wrap">{{ base_url }}/api/webhook/{{ token }}?text=Hello+there</code></p>
+  <table class="kv">
+    <tr><th><code>text</code></th><td>The message, or what the conversation is about</td></tr>
+    <tr><th><code>mode</code></th><td><code>message</code> (read out, default) or <code>conversation</code></td></tr>
+    <tr><th><code>allow_reply</code></th><td><code>true</code> to keep talking after the message</td></tr>
+    <tr><th><code>extension</code></th><td>Which AI profile to use (its number), e.g. <code>1</code></td></tr>
+    <tr><th><code>line</code></th><td><code>line1</code> or <code>line2</code></td></tr>
+    <tr><th><code>retries</code></th><td>How often to try again if nobody answers</td></tr>
+  </table>
+  <p class="muted small">The token in the URL is the password; keep it private. API docs: <a href="/api/docs">/api/docs</a>.</p>
+  <form method="post" action="/outbound/token" onsubmit="return confirm('Old webhook URLs stop working. Continue?')"><button class="secondary">Create a new token</button></form>
+</section>
+{% endblock %}

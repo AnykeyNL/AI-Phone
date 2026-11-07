@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post" action="/settings">
+<section class="card">
+  <h2>API keys</h2>
+  <p class="muted small">Saved keys are never shown in full. Leave a field empty to keep the current key.</p>
+  {% for key, label, link, why in [
+      ('openai_api_key', 'OpenAI', 'https://platform.openai.com/api-keys', 'ChatGPT Realtime voice, and optional OpenAI text-to-speech'),
+      ('anthropic_api_key', 'Anthropic (Claude)', 'https://console.anthropic.com/settings/keys', 'Claude profiles'),
+      ('deepgram_api_key', 'Deepgram', 'https://console.deepgram.com/', 'speech-to-text and the default voice for Claude profiles'),
+      ('elevenlabs_api_key', 'ElevenLabs', 'https://elevenlabs.io/app/settings/api-keys', 'optional, higher-quality voices for Claude profiles')] %}
+  <div class="keyrow">
+    <label>{{ label }} <span class="muted small">— {{ why }}</span>
+      <input type="password" name="{{ key }}" autocomplete="off" placeholder="{{ masked[key] or 'not set' }}"></label>
+    <div class="keyactions">
+      {% if s[key] %}<button type="button" class="secondary" onclick="testKey('{{ key }}', this)">Test</button>
+      <label class="check small"><input type="checkbox" name="clear_{{ key }}"> remove</label>{% endif %}
+      <a class="small" href="{{ link }}" target="_blank" rel="noopener">get a key</a>
+      <span class="small" id="test-{{ key }}"></span>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+<section class="card">
+  <h2>Calls</h2>
+  <div class="row">
+    <label>Maximum call length (s) <input type="number" name="max_call_seconds" value="{{ s.max_call_seconds }}" min="0"></label>
+    <label>Hang up after silence (s) <input type="number" name="silence_timeout" value="{{ s.silence_timeout }}" min="0"></label>
+    <label>Keep call log (days) <input type="number" name="keep_calls_days" value="{{ s.keep_calls_days }}" min="0"></label>
+  </div>
+  <p class="help">Limits protect you from cost surprises, e.g. a handset left off the hook. 0 means no limit.</p>
+  <label class="check"><input type="checkbox" name="log_transcripts" {{ 'checked' if s.log_transcripts }}> Save transcripts in the call log</label>
+</section>
+<div class="actions"><button>Save settings</button></div>
+</form>
+
+<div class="grid">
+<section class="card">
+  <h2>Time zone</h2>
+  <p>Schedules use the server's time zone. Current: <strong>{{ timezone }}</strong></p>
+  <form method="post" action="/settings/timezone" class="row">
+    <label>Time zone <input name="timezone" value="{{ timezone }}" placeholder="Europe/Amsterdam"></label>
+    <button class="secondary">Change</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Password</h2>
+  <form method="post" action="/settings/password">
+    <label>Current password <input type="password" name="current" required></label>
+    <label>New password <input type="password" name="new" minlength="8" required></label>
+    <label>Repeat new password <input type="password" name="new2" minlength="8" required></label>
+    <button class="secondary">Change password</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Service</h2>
+  <p>Server address: <code>{{ server_ip }}</code></p>
+  <form method="post" action="/settings/restart" onsubmit="setTimeout(()=>location.reload(), 5000)">
+    <button class="secondary">Restart AI-Phone</button>
+  </form>
+  <form method="post" action="/phone/apply"><button class="secondary">Re-apply Asterisk configuration</button></form>
+</section>
+</div>
+{% endblock %}

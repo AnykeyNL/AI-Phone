@@ -1,0 +1,13 @@
+; AI-Phone: Asterisk Manager Interface, local access only.
+[general]
+enabled = yes
+port = 5038
+bindaddr = 127.0.0.1
+
+[aiphone]
+secret = @AMI_SECRET@
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = system,call,reporting,originate,command
+write = system,call,originate,command
+writetimeout = 5000

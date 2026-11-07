@@ -1,0 +1,18 @@
+{% if calls %}
+<table class="list">
+  <thead><tr><th>When</th><th>Direction</th><th>AI</th><th>Line</th><th>Duration</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for c in calls %}
+    <tr>
+      <td>{{ c.started|fmt_time }}</td>
+      <td>{{ c.direction }}</td>
+      <td>{{ c.profile }}</td>
+      <td>{{ c.line }}</td>
+      <td>{{ fmt_duration(c.answered, c.ended) if c.answered else '' }}</td>
+      <td><span class="pill {{ 'ok' if c.status == 'completed' else 'bad' if c.status in ('failed','no-answer') else 'warn' }}">{{ c.status }}</span> <span class="muted small">{{ c.reason or '' }}</span></td>
+      <td><a href="/calls/{{ c.uuid }}">details</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="muted">No calls yet.</p>{% endif %}

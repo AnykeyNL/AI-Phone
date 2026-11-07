@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Schedule{% endblock %}
+{% block content %}
+<h1>{{ sched.name or 'New schedule' }}</h1>
+<form method="post" action="/schedules/{{ sched.id or 'new' }}" class="card">
+  <label>Name <input name="name" value="{{ sched.name }}" required placeholder="e.g. Morning briefing"></label>
+  <div class="row">
+    <label>Repeat <select name="kind" id="kind">
+      <option value="once" {{ 'selected' if sched.kind == 'once' }}>Once</option>
+      <option value="daily" {{ 'selected' if sched.kind == 'daily' }}>Every day</option>
+      <option value="weekly" {{ 'selected' if sched.kind == 'weekly' }}>On chosen days</option></select></label>
+    <label data-kind="once">Date and time <input type="datetime-local" name="at_datetime" value="{{ sched.at_datetime or '' }}"></label>
+    <label data-kind="daily weekly">Time <input type="time" name="at_time" value="{{ sched.at_time or '08:00' }}"></label>
+  </div>
+  <div data-kind="weekly" class="days">
+    {% set chosen = (sched.weekdays or '').split(',') %}
+    {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+      <label class="check"><input type="checkbox" name="weekdays" value="{{ loop.index0 }}" {{ 'checked' if loop.index0|string in chosen }}> {{ d }}</label>
+    {% endfor %}
+  </div>
+  <p class="help">Server time zone: {{ timezone }}.</p>
+  {% with call = sched.call %}{% include "_call_fields.html" %}{% endwith %}
+  <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if sched.enabled }}> Enabled</label>
+  <div class="actions"><button>Save</button> <a href="/outbound">Back</a></div>
+</form>
+{% if sched.id %}
+<form method="post" action="/schedules/{{ sched.id }}/delete" onsubmit="return confirm('Delete this schedule?')"><button class="danger">Delete schedule</button></form>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script>kindToggle();</script>{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Welcome{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Welcome to AI-Phone</h1>
+  <p>Choose a password for the web interface. You'll use it to manage the whole system from here.</p>
+  <form method="post">
+    <label>Password <input type="password" name="password" minlength="8" required autofocus></label>
+    <label>Repeat password <input type="password" name="password2" minlength="8" required></label>
+    <button>Save and continue</button>
+  </form>
+</div>
+{% endblock %}

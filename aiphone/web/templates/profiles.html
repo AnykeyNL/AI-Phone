@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}AI profiles{% endblock %}
+{% block content %}
+<h1>AI profiles</h1>
+<p>Each profile is a number you can dial. When you lift the handset and don't dial, the phone calls the <strong>default</strong> number ({{ default_extension }}) automatically.</p>
+<section class="card">
+<table class="list">
+  <thead><tr><th>Dial</th><th>Name</th><th>AI</th><th>Model / voice</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for p in profiles %}
+  <tr>
+    <td><strong>{{ p.extension }}</strong>{% if p.extension == default_extension %} <span class="pill ok">default</span>{% endif %}</td>
+    <td>{{ p.name }}</td>
+    <td>{{ providers[p.provider].label }}</td>
+    <td class="small">{{ p.config.model or '' }} {{ p.config.voice or p.config.tts_voice or '' }}</td>
+    <td>{% if p.enabled %}<span class="pill ok">on</span>{% else %}<span class="pill">off</span>{% endif %}</td>
+    <td><a href="/profiles/{{ p.id }}">edit</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p><a class="button" href="/profiles/new">Add a profile</a></p>
+</section>
+{% endblock %}

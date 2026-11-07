@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1><img src="/static/phone.svg" alt="" class="inline-icon"> AI-Phone</h1>
+  <form method="post">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Password <input type="password" name="password" required autofocus></label>
+    <button>Log in</button>
+  </form>
+  <p class="muted small">Forgot it? On the server run <code>sudo aiphone-reset-password</code>.</p>
+</div>
+{% endblock %}

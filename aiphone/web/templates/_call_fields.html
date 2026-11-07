@@ -1,0 +1,14 @@
+<label>Message or topic
+  <textarea name="text" rows="3" required placeholder="e.g. Time to take out the bins!">{{ call.text }}</textarea></label>
+<div class="row">
+  <label>Type <select name="mode">
+    <option value="message" {{ 'selected' if call.mode == 'message' }}>Read out this message</option>
+    <option value="conversation" {{ 'selected' if call.mode == 'conversation' }}>Start a conversation about this</option></select></label>
+  <label>AI <select name="profile_id">{% for p in profiles if p.enabled and p.provider != 'echo' %}<option value="{{ p.id }}" {{ 'selected' if p.id == call.profile_id }}>{{ p.name }} ({{ p.extension }})</option>{% endfor %}</select></label>
+  <label>Phone <select name="line">{% for l in lines if l.enabled %}<option value="{{ l.id }}" {{ 'selected' if l.id == call.line }}>{{ l.label }}</option>{% endfor %}</select></label>
+</div>
+<div class="row">
+  <label>Retries if not answered <input type="number" name="retries" value="{{ call.retries }}" min="0" max="10"></label>
+  <label>Wait between tries (s) <input type="number" name="retry_delay" value="{{ call.retry_delay }}" min="30"></label>
+</div>
+<label class="check"><input type="checkbox" name="allow_reply" {{ 'checked' if call.allow_reply }}> After a message, stay on the line so I can reply</label>

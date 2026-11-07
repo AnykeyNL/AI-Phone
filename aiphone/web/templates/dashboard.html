@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div id="status" data-version="{{ status.version }}">
+{% if status.warnings %}<div class="flash error"><strong>Missing API keys</strong> — <a href="/settings">add them on the Settings page</a>:
+  <ul>{% for w in status.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="grid">
+  <section class="card">
+    <h2>System</h2>
+    <p>{% if status.ami %}<span class="pill ok">Asterisk running</span>{% else %}<span class="pill bad">Asterisk not reachable</span> <span class="muted small">{{ status.asterisk_error }}</span>{% endif %}</p>
+    <table class="kv">
+    {% for l in status.lines %}
+      <tr><th>{{ l.label }}</th><td>
+      {% if not l.enabled %}<span class="pill">disabled</span>
+      {% elif l.registered %}<span class="pill ok">connected</span> <span class="muted small">{{ l.ip }}</span>
+      {% else %}<span class="pill warn">not connected</span> <a class="small" href="/phone">setup guide</a>{% endif %}
+      </td></tr>
+    {% endfor %}
+    </table>
+  </section>
+  <section class="card">
+    <h2>Active calls</h2>
+    {% if status.active %}
+      <ul class="plain">{% for c in status.active %}
+        <li><a href="/calls/{{ c.uuid }}">{{ c.profile }}</a> · {{ c.direction }} · {{ c.duration }}</li>
+      {% endfor %}</ul>
+    {% else %}<p class="muted">No calls right now. Pick up the phone to talk.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Ring the phone now</h2>
+    <form method="post" action="/outbound/call">
+      <label>What should the AI say?
+        <textarea name="text" rows="2" placeholder="e.g. Dinner is ready!" required></textarea></label>
+      <div class="row">
+        <label>Type <select name="mode">
+          <option value="message">Deliver this message</option>
+          <option value="conversation">Start a conversation about it</option></select></label>
+        <label>AI <select name="profile_id">{% for p in profiles if p.enabled and p.provider != 'echo' %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
+        <label>Phone <select name="line">{% for l in lines if l.enabled %}<option value="{{ l.id }}">{{ l.label }}</option>{% endfor %}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="allow_reply" checked> Let me reply after the message</label>
+      <button>Ring</button>
+    </form>
+  </section>
+</div>
+</div>
+<section class="card">
+  <h2>Recent calls <a class="small" href="/calls">all calls</a></h2>
+  {% include "_calls_table.html" %}
+</section>
+{% endblock %}
+{% block scripts %}<script>pollStatus();</script>{% endblock %}

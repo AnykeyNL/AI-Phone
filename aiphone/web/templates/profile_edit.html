@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name or 'New profile' }}{% endblock %}
+{% block content %}
+<h1>{{ profile.name or 'New profile' }}</h1>
+<form method="post" action="/profiles/{{ profile.id or 'new' }}" class="card">
+  <div class="row">
+    <label>Name <input name="name" value="{{ profile.name }}" required></label>
+    <label>Number to dial <input name="extension" value="{{ profile.extension }}" required pattern="[0-9*#]+" inputmode="numeric"></label>
+  </div>
+  <label>AI provider
+    <select name="provider" onchange="location.href='/profiles/{{ profile.id or 'new' }}?provider='+this.value">
+      {% for key, p in providers.items() %}<option value="{{ key }}" {{ 'selected' if key == profile.provider }}>{{ p.label }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if providers[profile.provider].requires %}
+  <p class="muted small">Needs: {{ providers[profile.provider].requires|join(', ')|replace('_', ' ') }} (see <a href="/settings">Settings</a>).</p>
+  {% endif %}
+  {% for f in fields %}
+    {% set v = profile.config.get(f.key, f.default) %}
+    {% if f.type == 'textarea' %}
+      <label>{{ f.label }}<textarea name="cfg_{{ f.key }}" rows="{{ f.rows or 4 }}">{{ v }}</textarea></label>
+    {% elif f.type == 'select' %}
+      <label>{{ f.label }}<select name="cfg_{{ f.key }}">{% for o in f.options %}<option {{ 'selected' if o == v }}>{{ o }}</option>{% endfor %}</select></label>
+    {% elif f.type == 'checkbox' %}
+      <label class="check"><input type="checkbox" name="cfg_{{ f.key }}" {{ 'checked' if v }}> {{ f.label }}</label>
+    {% elif f.type == 'number' %}
+      <label>{{ f.label }}<input type="number" name="cfg_{{ f.key }}" value="{{ v }}" step="{{ f.step or 'any' }}"></label>
+    {% else %}
+      <label>{{ f.label }}<input name="cfg_{{ f.key }}" value="{{ v }}" {% if f.suggestions %}list="dl_{{ f.key }}"{% endif %}></label>
+      {% if f.suggestions %}<datalist id="dl_{{ f.key }}">{% for o in f.suggestions %}<option value="{{ o }}">{% endfor %}</datalist>{% endif %}
+    {% endif %}
+    {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+  {% endfor %}
+  <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if profile.enabled }}> Enabled</label>
+  <label class="check"><input type="checkbox" name="make_default"> Make this the default (dialled when you just lift the handset)</label>
+  <div class="actions">
+    <button>Save</button>
+    <a href="/profiles">Back</a>
+  </div>
+</form>
+{% if profile.id %}
+<form method="post" action="/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this profile?')">
+  <button class="danger">Delete profile</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AI-Phone{% endblock %} · AI-Phone</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/phone.svg" type="image/svg+xml">
+</head>
+<body>
+{% if request.session.get('user') %}
+<header class="topbar">
+  <a class="brand" href="/"><img src="/static/phone.svg" alt=""> AI-Phone</a>
+  <nav>
+    <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
+    <a href="/profiles" class="{{ 'active' if path.startswith('/profiles') }}">AI profiles</a>
+    <a href="/phone" class="{{ 'active' if path.startswith('/phone') }}">Phone &amp; ATA</a>
+    <a href="/outbound" class="{{ 'active' if path.startswith('/outbound') or path.startswith('/schedules') }}">Outbound calls</a>
+    <a href="/calls" class="{{ 'active' if path.startswith('/calls') }}">Call log</a>
+    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
+    <a href="/logs" class="{{ 'active' if path.startswith('/logs') }}">System log</a>
+    <a href="/logout">Log out</a>
+  </nav>
+</header>
+{% endif %}
+<main>
+  {% for f in flashes %}<div class="flash {{ f.kind }}">{{ f.text }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+<footer>AI-Phone {{ version }}</footer>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

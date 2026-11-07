@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}System log{% endblock %}
+{% block content %}
+<h1>System log <a class="small" href="/logs">refresh</a></h1>
+<p class="muted">The last 300 lines from AI-Phone and Asterisk.</p>
+<pre class="log">{{ logs }}</pre>
+{% endblock %}
+{% block scripts %}<script>document.querySelector('.log').scrollTop = 1e9;</script>{% endblock %}

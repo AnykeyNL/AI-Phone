@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Call{% endblock %}
+{% block content %}
+<h1>Call with {{ c.profile }}</h1>
+<section class="card">
+  <table class="kv">
+    <tr><th>Status</th><td id="call-status"><span class="pill">{{ c.status }}</span> {{ c.reason or '' }}</td></tr>
+    <tr><th>Direction</th><td>{{ c.direction }}{% if c.request %} · {{ c.request.source }}{% endif %}</td></tr>
+    <tr><th>Line</th><td>{{ c.line }}</td></tr>
+    <tr><th>Started</th><td>{{ c.started|fmt_time }}</td></tr>
+    <tr><th>Duration</th><td>{{ fmt_duration(c.answered, c.ended) if c.answered else '' }}</td></tr>
+    {% if c.request %}<tr><th>Request</th><td>{{ c.request.mode }}: {{ c.request.text }}</td></tr>{% endif %}
+  </table>
+  {% if live %}<form method="post" action="/calls/{{ c.uuid }}/hangup"><button class="danger">Hang up</button></form>{% endif %}
+</section>
+<section class="card">
+  <h2>Transcript</h2>
+  <div id="transcript" class="transcript">
+  {% for t in c.transcript %}
+    <div class="msg {{ t.role }}"><span class="who">{{ t.role }}</span><span class="t">{{ t.t }}s</span><p>{{ t.text }}</p></div>
+  {% else %}<p class="muted">Nothing yet.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}{% if live %}<script>pollCall("{{ c.uuid }}");</script>{% endif %}{% endblock %}

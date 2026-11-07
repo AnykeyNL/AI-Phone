@@ -1,0 +1,21 @@
+[Unit]
+Description=AI-Phone (AI conversations through an analogue telephone)
+After=network-online.target asterisk.service
+Wants=network-online.target asterisk.service
+
+[Service]
+Type=simple
+User=aiphone
+Group=aiphone
+SupplementaryGroups=asterisk systemd-journal
+WorkingDirectory=/opt/aiphone
+Environment=PYTHONUNBUFFERED=1
+Environment=AIPHONE_DATA_DIR=/var/lib/aiphone
+Environment=AIPHONE_ASTERISK_DIR=/etc/asterisk/aiphone
+ExecStart=/opt/aiphone/venv/bin/python -m aiphone
+Restart=always
+RestartSec=2
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
