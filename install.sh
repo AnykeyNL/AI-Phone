@@ -135,6 +135,7 @@ fi
 "$APP_DIR/venv/bin/pip" install -q --upgrade pip
 "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 chown -R root:root "$APP_DIR"
+chmod -R a+rX "$APP_DIR"
 ok "Python environment ready"
 
 # ------------------------------------------------------------- data + secrets
@@ -176,8 +177,8 @@ chmod 0640 "$AST_DIR/manager.conf"
 for f in extensions.ael extensions.lua users.conf; do
   [[ -f "$AST_DIR/$f" ]] && mv "$AST_DIR/$f" "$AST_DIR/$f.disabled"
 done
-sudo -u aiphone AIPHONE_DATA_DIR="$DATA_DIR" AIPHONE_ASTERISK_DIR="$AST_DIR/aiphone" \
-  "$APP_DIR/venv/bin/python" -m aiphone --write-asterisk-config
+(cd "$APP_DIR" && sudo -u aiphone PYTHONPATH="$APP_DIR" AIPHONE_DATA_DIR="$DATA_DIR" \
+  AIPHONE_ASTERISK_DIR="$AST_DIR/aiphone" "$APP_DIR/venv/bin/python" -m aiphone --write-asterisk-config)
 chgrp asterisk "$AST_DIR"/aiphone/*.conf
 
 # ---------------------------------------------------------- sudo + helpers
@@ -191,7 +192,7 @@ visudo -cf /etc/sudoers.d/aiphone >/dev/null
 cat >/usr/local/bin/aiphone-reset-password <<EOF
 #!/bin/sh
 # Removes the AI-Phone admin password; the next visit to the web interface asks for a new one.
-exec sudo -u aiphone AIPHONE_DATA_DIR=$DATA_DIR $APP_DIR/venv/bin/python -m aiphone --reset-password
+cd $APP_DIR && exec sudo -u aiphone PYTHONPATH=$APP_DIR AIPHONE_DATA_DIR=$DATA_DIR $APP_DIR/venv/bin/python -m aiphone --reset-password
 EOF
 chmod 755 /usr/local/bin/aiphone-reset-password
 

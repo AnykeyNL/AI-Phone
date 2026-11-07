@@ -10,6 +10,7 @@ Group=aiphone
 SupplementaryGroups=asterisk systemd-journal
 WorkingDirectory=/opt/aiphone
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/aiphone
 Environment=AIPHONE_DATA_DIR=/var/lib/aiphone
 Environment=AIPHONE_ASTERISK_DIR=/etc/asterisk/aiphone
 ExecStart=/opt/aiphone/venv/bin/python -m aiphone
