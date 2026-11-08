@@ -378,6 +378,7 @@ def create_app(db, manager, scheduler) -> FastAPI:
         dials = list(settings.get("speed_dials") or [])
         dials += [{"digits": "", "name": "", "number": "", "enabled": True}] * 3
         return render(request, "speeddial.html", t=settings["trunk"], dials=dials,
+                      lines=settings["lines"], ring_timeout=settings.get("ring_timeout"),
                       status=await status_data(), profiles=db.profiles(),
                       echo=settings.get("echo_test_extension"))
 
@@ -386,6 +387,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
         form = await request.form()
         trunk = dict(db.get("trunk"))
         trunk["enabled"] = form_bool(form, "trunk_enabled")
+        incoming = form.get("trunk_incoming") or "off"
+        trunk["incoming"] = incoming if incoming in (
+            "off", "all", *[l["id"] for l in db.get("lines") or []]) else "off"
         for key in ("provider_name", "host", "username", "auth_username", "from_domain",
                     "codecs", "public_ip"):
             trunk[key] = (form.get(f"trunk_{key}") or "").strip()
@@ -779,10 +783,16 @@ def create_app(db, manager, scheduler) -> FastAPI:
 
     @app.get("/internal/dial/end", response_class=PlainTextResponse)
     async def internal_dial_end(request: Request, id: str = "", status: str = "",
-                                answered: str = "", cause: str = ""):
+                                answered: str = "", cause: str = "", peer: str = ""):
         local_only(request)
         if id:
-            manager.speed_dial_ended(id, status, answered, cause)
+            manager.speed_dial_ended(id, status, answered, cause, peer)
         return "ok"
+
+    @app.get("/internal/incoming/start", response_class=PlainTextResponse)
+    async def internal_incoming_start(request: Request):
+        local_only(request)
+        q = request.query_params
+        return manager.incoming_sip_started(q.get("from", ""), q.get("name", ""))
 
     return app

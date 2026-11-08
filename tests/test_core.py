@@ -133,3 +133,35 @@ def test_speed_dial_calls_are_logged(tmp_path):
         uid = m.speed_dial_started("5", "line1")
         m.speed_dial_ended(uid, status, "", "17")
         assert db.call(uid)["status"] == expect, status
+
+
+def test_incoming_sip_calls_ring_the_phone(tmp_path):
+    from aiphone.db import Database
+    from aiphone.manager import CallManager
+    base = {"lines": [{"id": "line1", "username": "line1", "enabled": True},
+                      {"id": "line2", "username": "line2", "enabled": True}],
+            "trunk": {"enabled": True, "host": "sip.example.net", "username": "u",
+                      "password": "p", "incoming": "off"}, "ring_timeout": 25}
+    ext = asterisk.render_extensions(base, [], 8080)
+    assert "[aiphone-trunk-in]" in ext and "Hangup(21)" in ext.split("[aiphone-trunk-in]")[1]
+    base["trunk"]["incoming"] = "line2"
+    inc = asterisk.render_extensions(base, [], 8080).split("[aiphone-trunk-in]")[1]
+    assert "Dial(PJSIP/line2,25,U(aiphone-dial-answered^${AIPHONE_DIAL}))" in inc
+    assert "/internal/incoming/start?from=" in inc and "Hangup(21)" not in inc
+    base["trunk"]["incoming"] = "all"
+    assert "Dial(PJSIP/line1&PJSIP/line2,25" in asterisk.render_extensions(base, [], 8080)
+    base["trunk"]["password"] = ""  # SIP account not configured: refuse
+    assert "Dial(PJSIP/line1&" not in asterisk.render_extensions(base, [], 8080)
+
+    db = Database(tmp_path / "t.db")
+    m = CallManager(db)
+    uid = m.incoming_sip_started("+31612345678", "Mum")
+    c = db.call(uid)
+    assert c["direction"] == "incoming-sip" and c["profile"] == "Mum (+31612345678)"
+    m.speed_dial_answered(uid)
+    m.speed_dial_ended(uid, "ANSWER", "30", "16", "line1")
+    c = db.call(uid)
+    assert c["status"] == "completed" and c["line"] == "line1"
+    uid = m.incoming_sip_started("0201234567")
+    m.speed_dial_ended(uid, "NOANSWER")
+    assert (db.call(uid)["status"], db.call(uid)["reason"]) == ("no-answer", "nobody answered")

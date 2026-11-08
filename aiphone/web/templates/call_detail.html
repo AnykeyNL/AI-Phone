@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call{% endblock %}
 {% block content %}
-<h1>{% if c.direction == "speed-dial" %}Speed dial {{ c.profile }}{% else %}Call with {{ c.profile }}{% endif %}</h1>
+<h1>{% if c.direction == "speed-dial" %}Speed dial {{ c.profile }}{% elif c.direction == "incoming-sip" %}Incoming call from {{ c.profile }}{% else %}Call with {{ c.profile }}{% endif %}</h1>
 <section class="card">
   <table class="kv">
     <tr><th>Status</th><td id="call-status"><span class="pill">{{ c.status }}</span> {{ c.reason or '' }}</td></tr>
@@ -13,7 +13,7 @@
   </table>
   {% if live and can_hangup %}<form method="post" action="/calls/{{ c.uuid }}/hangup"><button class="danger">Hang up</button></form>{% endif %}
 </section>
-{% if c.direction == "speed-dial" %}
+{% if c.direction in ("speed-dial", "incoming-sip") %}
 <p class="muted">A call through your SIP account. The AI is not on these calls, so there is no transcript.</p>
 {% else %}
 <section class="card">

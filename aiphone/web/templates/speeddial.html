@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Speed dial{% endblock %}
 {% block content %}
-<h1>Speed dial</h1>
+<h1>Speed dial and incoming calls</h1>
 <p>Call real phone numbers from the old phone through a SIP account (for example CheapConnect). For safety the phone can <strong>only</strong> call the numbers below: dial the short number, e.g. <code>5</code>, and AI-Phone calls the mobile number behind it. Any other number is refused.</p>
 
 <form method="post" action="/speeddial">
@@ -30,7 +30,7 @@
     {% if status.trunk == 'Registered' %}<span class="pill ok">registered</span>
     {% elif status.trunk %}<span class="pill warn">{{ status.trunk|lower }}</span>
     {% elif t.enabled %}<span class="pill warn">not active</span>{% endif %}</h2>
-  <label class="check"><input type="checkbox" name="trunk_enabled" {{ 'checked' if t.enabled }}> Use a SIP account for speed dials</label>
+  <label class="check"><input type="checkbox" name="trunk_enabled" {{ 'checked' if t.enabled }}> Use a SIP account for speed dials and incoming calls</label>
   <div class="row">
     <label>Provider name <input name="trunk_provider_name" value="{{ t.provider_name }}"></label>
     <label>SIP server <input name="trunk_host" value="{{ t.host }}" placeholder="sip.cheapconnect.net"></label>
@@ -53,7 +53,21 @@
     </div>
     <p class="help">Most providers, including CheapConnect, work behind a home router as-is. Fill in your public IP address only if calls connect but you hear nothing.</p>
   </details>
-  <p class="help">For CheapConnect: the server is <code>sip.cheapconnect.net</code>, and the username and password are the SIP details shown in your CheapConnect account. Incoming calls from the SIP account are refused; it is used only for these speed dials.</p>
+  <p class="help">For CheapConnect: the server is <code>sip.cheapconnect.net</code>, and the username and password are the SIP details shown in your CheapConnect account.</p>
+</section>
+
+<section class="card">
+  <h2>Incoming calls</h2>
+  <p>When someone calls your SIP number (for example your CheapConnect number), AI-Phone can ring the old phone so you can answer it like a normal phone call.</p>
+  {% set inc = t.incoming or 'off' %}
+  <label>When your SIP number is called
+    <select name="trunk_incoming">
+      <option value="off" {{ 'selected' if inc == 'off' }}>Refuse the call (the phone does not ring)</option>
+      {% set enabled = lines|selectattr('enabled')|list %}
+      {% if enabled|length > 1 %}<option value="all" {{ 'selected' if inc == 'all' }}>Ring all phone ports</option>{% endif %}
+      {% for l in lines %}<option value="{{ l.id }}" {{ 'selected' if inc == l.id }}{{ '' if l.enabled else ' disabled' }}>Ring {{ l.label }}{{ '' if l.enabled else ' (port turned off)' }}</option>{% endfor %}
+    </select></label>
+  <p class="help">The phone rings for up to {{ ring_timeout }} seconds (set on the Phone &amp; ATA page). If it isn't answered, or the handset is off the hook, the caller hears busy or your provider's voicemail. Incoming calls are listed in the call log. Needs the SIP account above to be registered.</p>
 </section>
 <div class="actions"><button>Save and apply to Asterisk</button></div>
 </form>

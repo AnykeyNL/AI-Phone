@@ -23,6 +23,7 @@ Everything is managed from a web interface: API keys, AI profiles and prompts, A
 - **The AI can hang up** after saying goodbye (an `end_call` tool).
 - **Outbound calls**: ring the phone now from the web interface, on a schedule (once, daily, chosen weekdays), or via a webhook (Home Assistant, cron, doorbell…). Choose between reading out a message or starting a conversation, with retries when nobody answers.
 - **Speed dial to real phones**: connect a SIP account (for example CheapConnect) and give mobile numbers a short number, so dialling `5` rings your mobile. The phone can only call these numbers, nothing else. These calls appear in the call log too, with duration and result.
+- **Incoming calls**: calls to your SIP number can ring the analogue phone (choose which port), or be refused. They are listed in the call log.
 - **Self-update** from the Settings page: check GitHub for a new version and install it with one click, or automatically every night.
 - **Call log with transcripts**, live while a call runs.
 - **Cost protection**: maximum call length and hang-up after silence (a handset left off the hook won't run up a bill).
@@ -90,7 +91,9 @@ The *Phone & ATA* page shows the exact values for your installation. In short, o
 
 On the *Speed dial* page, enter your SIP account (for CheapConnect: server `sip.cheapconnect.net`, plus the SIP username and password from your CheapConnect account) and add speed-dial numbers, e.g. `5` → `0612345678`. Lift the handset, dial `5` within the auto-dial delay, and the call goes out through the SIP account.
 
-For safety the phone can only call the numbers on this page: every other number is refused, and incoming calls from the SIP account are rejected. The dashboard shows whether the SIP account is registered. If calls connect but you hear nothing, fill in your public IP address under *Advanced*.
+For safety the phone can only call the numbers on this page: every other number is refused.
+
+Under *Incoming calls* you choose what happens when someone calls your SIP number: refuse the call (the default), or ring a phone port (or all ports) so you can answer on the old phone. Calls are listed in the call log with the caller's number. The dashboard shows whether the SIP account is registered. If calls connect but you hear nothing, fill in your public IP address under *Advanced*.
 
 ## Updating
 
