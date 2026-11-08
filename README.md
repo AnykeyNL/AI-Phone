@@ -19,6 +19,7 @@ Everything is managed from a web interface: API keys, AI profiles and prompts, A
   - **Claude**: Deepgram streaming speech-to-text → Claude (streamed, spoken sentence by sentence) → text-to-speech from Deepgram Aura, ElevenLabs or OpenAI.
   - **Echo test**: plays your voice back, to test the phone line without any API key.
 - **Profiles = phone numbers.** Each profile has its own number, model, voice, prompt and greeting. Lift the handset and wait for the default AI, or dial `1` for Claude, `2` for ChatGPT, and so on (works with a rotary dial).
+- **Live information**: the AI knows the date, time and where the phone is, and can search the web for the weather, news, opening hours and so on (Claude uses Anthropic's built-in web search; ChatGPT profiles look things up through OpenAI's web search).
 - **The AI can hang up** after saying goodbye (an `end_call` tool).
 - **Outbound calls**: ring the phone now from the web interface, on a schedule (once, daily, chosen weekdays), or via a webhook (Home Assistant, cron, doorbell…). Choose between reading out a message or starting a conversation, with retries when nobody answers.
 - **Speed dial to real phones**: connect a SIP account (for example CheapConnect) and give mobile numbers a short number, so dialling `5` rings your mobile. The phone can only call these numbers, nothing else.
@@ -98,6 +99,17 @@ For safety the phone can only call the numbers on this page: every other number 
 Create the token at GitHub → Settings → Developer settings → [Fine-grained tokens](https://github.com/settings/personal-access-tokens/new): give it access to only this repository with the permission *Contents: Read-only*.
 
 **From the command line:** `git pull && sudo ./install.sh` in your clone.
+
+## Live information (weather, news, …)
+
+Set the phone's location on the *Settings* page (city, optional region, and a two-letter country code such as `NL`). Every call then tells the AI the current date, time and location, so "what's the weather like tomorrow?" needs no follow-up question.
+
+With *Let the AI search the web* ticked on a profile (the default), the AI looks things up when the answer depends on current facts. It says a short "one moment, let me check" first, then answers in a sentence or two. The call log shows what it searched for.
+
+- **Claude profiles** use Anthropic's web search tool (up to three searches per answer), billed on your Anthropic account.
+- **ChatGPT profiles**: the Realtime model can't search by itself, so AI-Phone gives it a `web_search` function and answers it with a fast OpenAI model that has web search (*Web search model*, default `gpt-4.1-mini`), billed on your OpenAI account.
+
+Untick the option on a profile to turn web search off for it.
 
 ## Outbound calls and webhooks
 

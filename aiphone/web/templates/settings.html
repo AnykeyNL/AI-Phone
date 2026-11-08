@@ -33,6 +33,16 @@
   <p class="help">Limits protect you from cost surprises, e.g. a handset left off the hook. 0 means no limit.</p>
   <label class="check"><input type="checkbox" name="log_transcripts" {{ 'checked' if s.log_transcripts }}> Save transcripts in the call log</label>
 </section>
+<section class="card">
+  <h2>Location</h2>
+  <p class="help">The AI is told the current date and time and where the phone is, so "what's the weather like?" just works. Web searches use it to find local results.</p>
+  <div class="row">
+    <label>City <input name="location_city" value="{{ s.location_city }}" placeholder="Amsterdam"></label>
+    <label>Region <span class="muted small">(optional)</span> <input name="location_region" value="{{ s.location_region }}" placeholder="North Holland"></label>
+    <label>Country code <input name="location_country" value="{{ s.location_country }}" placeholder="NL" maxlength="2" pattern="[A-Za-z]{2}" title="Two-letter country code, e.g. NL"></label>
+  </div>
+  <p class="help">Two-letter country code, e.g. NL, BE, DE, GB, US. Time zone: {{ timezone }} (change it below).</p>
+</section>
 <div class="actions"><button>Save settings</button></div>
 </form>
 

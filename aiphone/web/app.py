@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, asterisk, updater
+from .. import __version__, asterisk, localinfo, updater
 from ..providers import PROVIDERS, default_profile_config, provider_fields
 from ..scheduler import describe, next_run
 
@@ -79,10 +79,7 @@ def fmt_duration(start: float | None, end: float | None) -> str:
 
 
 def system_timezone() -> str:
-    try:
-        return Path("/etc/timezone").read_text().strip()
-    except OSError:
-        return time.tzname[0]
+    return localinfo.timezone_name() or time.tzname[0]
 
 
 templates.env.filters["fmt_time"] = fmt_time
@@ -627,6 +624,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
             except (TypeError, ValueError):
                 pass
         db.set("log_transcripts", form_bool(form, "log_transcripts"))
+        for key in ("location_city", "location_region", "location_country"):
+            if key in form:
+                db.set(key, (form.get(key) or "").strip()[:80])
         flash(request, "Settings saved.")
         return RedirectResponse("/settings", 303)
 

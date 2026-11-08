@@ -4,6 +4,7 @@ real CallManager, with a fake OpenAI Realtime server for the AI side."""
 import asyncio
 import base64
 import json
+from types import SimpleNamespace
 import struct
 import uuid as uuidlib
 
@@ -169,17 +170,12 @@ def test_claude_pipeline_turn_and_barge_in(manager, monkeypatch):
         async def __aexit__(self, *a):
             return False
 
-        @property
-        def text_stream(self):
-            async def gen():
-                for part in ["Hi there. ", "This is a long ", "answer. ", "Bye now."]:
-                    yield part
-            return gen()
+        async def __aiter__(self):
+            for part in ["Hi there. ", "This is a long ", "answer. ", "Bye now."]:
+                yield SimpleNamespace(type="text", text=part)
 
         async def get_final_message(self):
-            class M:
-                content = []
-            return M()
+            return SimpleNamespace(content=[], stop_reason="end_turn")
 
     class FakeAnthropic:
         def __init__(self, api_key):
