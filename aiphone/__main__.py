@@ -53,6 +53,8 @@ async def serve(db: Database, host: str, port: int) -> None:
     await manager.start()
     scheduler = Scheduler(db, manager)
     scheduler.start()
+    from .updater import auto_update_loop
+    asyncio.create_task(auto_update_loop(db, manager))
     try:
         asterisk.write_configs(db)
     except OSError as exc:

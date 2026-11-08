@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, asterisk
+from .. import __version__, asterisk, updater
 from ..providers import PROVIDERS, default_profile_config, provider_fields
 from ..scheduler import describe, next_run
 
@@ -29,7 +29,8 @@ log = logging.getLogger("aiphone.web")
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
-SECRET_KEYS = ["openai_api_key", "anthropic_api_key", "deepgram_api_key", "elevenlabs_api_key"]
+SECRET_KEYS = ["openai_api_key", "anthropic_api_key", "deepgram_api_key", "elevenlabs_api_key",
+               "update_token"]
 PUBLIC_PATHS = ("/login", "/setup", "/static", "/internal/", "/api/webhook/")
 
 
@@ -242,6 +243,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
                if p["provider"] == "claude_pipeline") and not settings.get("elevenlabs_api_key"):
             missing.append("ElevenLabs voice selected but no ElevenLabs API key")
         data["warnings"] = missing
+        upd = settings.get("update_last_check") or {}
+        data["update_available"] = bool(upd.get("available")) and \
+            upd.get("latest") != updater.installed().get("commit")
         return data
 
     @app.get("/", response_class=HTMLResponse)
@@ -601,8 +605,11 @@ def create_app(db, manager, scheduler) -> FastAPI:
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):
         s = db.all_settings()
+        repo, branch = updater.repo_and_branch(db)
         return render(request, "settings.html", s=s,
                       masked={k: mask(s.get(k, "")) for k in SECRET_KEYS},
+                      install=updater.installed(), repo=repo, branch=branch,
+                      upd=s.get("update_last_check") or {},
                       timezone=system_timezone(), server_ip=detect_ip())
 
     @app.post("/settings")
@@ -622,6 +629,53 @@ def create_app(db, manager, scheduler) -> FastAPI:
         db.set("log_transcripts", form_bool(form, "log_transcripts"))
         flash(request, "Settings saved.")
         return RedirectResponse("/settings", 303)
+
+    @app.post("/settings/updates")
+    async def update_settings(request: Request):
+        form = await request.form()
+        db.set("update_repo", (form.get("update_repo") or "").strip())
+        db.set("update_branch", (form.get("update_branch") or "").strip())
+        token = (form.get("update_token") or "").strip()
+        if form_bool(form, "clear_update_token"):
+            db.set("update_token", "")
+        elif token:
+            db.set("update_token", token)
+        db.set("auto_update", form_bool(form, "auto_update"))
+        db.set("auto_update_time", form.get("auto_update_time") or "03:30")
+        result = await updater.check(db)
+        if result.get("error"):
+            flash(request, f"Could not check for updates: {result['error']}", "error")
+        elif result["available"]:
+            flash(request, "An update is available.")
+        else:
+            flash(request, "AI-Phone is up to date.")
+        return RedirectResponse("/settings#updates", 303)
+
+    @app.post("/settings/update")
+    async def run_update(request: Request):
+        if manager.sessions:
+            flash(request, "A call is in progress; update after the call.", "error")
+            return RedirectResponse("/settings#updates", 303)
+        try:
+            updater.start_update()
+        except Exception as exc:  # noqa: BLE001
+            detail = getattr(exc, "stderr", b"") or b""
+            flash(request, f"Could not start the update: {exc} {detail.decode(errors='ignore')}",
+                  "error")
+            return RedirectResponse("/settings#updates", 303)
+        request.session["update_from"] = updater.installed().get("installed_at", 0)
+        return RedirectResponse("/settings/update", 303)
+
+    @app.get("/settings/update", response_class=HTMLResponse)
+    async def update_progress(request: Request):
+        return render(request, "update.html", log=updater.read_log())
+
+    @app.get("/api/update")
+    async def update_status():
+        text = updater.read_log()
+        return {"log": text, "installed": updater.installed(),
+                "finished": "Update finished" in text,
+                "failed": bool(text) and "Update finished" not in text and "Error" in text}
 
     @app.post("/settings/password")
     async def change_password(request: Request):

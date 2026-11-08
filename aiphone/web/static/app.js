@@ -72,3 +72,27 @@ document.querySelectorAll('table.copy code').forEach(c => c.addEventListener('cl
   c.style.outline = '2px solid var(--ok)';
   setTimeout(() => c.style.outline = '', 600);
 }));
+
+// Follow the self-update log; the server restarts near the end.
+function followUpdate() {
+  const pre = document.getElementById('update-log');
+  const state = document.getElementById('update-state');
+  const timer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/update');
+      if (!r.ok) return;
+      const j = await r.json();
+      pre.textContent = j.log;
+      pre.scrollTop = 1e9;
+      if (j.finished) {
+        clearInterval(timer);
+        state.innerHTML = '<span class="pill ok">Update finished</span> Now running version <code>' +
+          (j.installed.commit || '').slice(0, 7) + '</code>.';
+      } else if (j.failed) {
+        state.innerHTML = '<span class="pill bad">The update stopped with an error</span> See the log below.';
+      }
+    } catch (e) {
+      state.textContent = 'AI-Phone is restarting…';
+    }
+  }, 2000);
+}
