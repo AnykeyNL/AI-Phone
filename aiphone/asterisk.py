@@ -216,6 +216,7 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
             f" same => n,Gosub(aiphone-connect,s,1({ext}))",
             " same => n,Hangup()",
         ]
+    base = f"http://127.0.0.1:{web_port}/internal"
     if trunk_active(settings):
         timeout = int((settings.get("trunk") or {}).get("dial_timeout") or 60)
         for sd in settings.get("speed_dials") or []:
@@ -227,7 +228,12 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
             name = re.sub(r"[^A-Za-z0-9 _\-()]", "", sd.get("name", ""))
             out += [
                 f"exten => {ext},1,NoOp(Speed dial: {name})",
-                f" same => n,Dial(PJSIP/{number}@trunk,{timeout})",
+                # Report the call to AI-Phone for the call log (the call goes ahead
+                # even if AI-Phone does not answer).
+                f" same => n,Set(AIPHONE_DIAL=${{CURL({base}/dial/start?digits={ext}"
+                "&line=${URIENCODE(${CHANNEL(endpoint)})})})",
+                " same => n,Set(CHANNEL(hangup_handler_push)=aiphone-dial-end,s,1(${AIPHONE_DIAL}))",
+                f" same => n,Dial(PJSIP/{number}@trunk,{timeout},U(aiphone-dial-answered^${{AIPHONE_DIAL}}))",
                 " same => n,Hangup()",
             ]
     out += [
@@ -245,6 +251,17 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
         " same => n,Wait(0.5)",
         f" same => n,AudioSocket(${{AIPHONE_UUID}},{AUDIOSOCKET_HOST}:{AUDIOSOCKET_PORT})",
         " same => n,Hangup()",
+        "",
+        "[aiphone-dial-answered]",
+        "; Runs when a speed-dial call is answered. ARG1 = call log id.",
+        f"exten => s,1,Set(AIPHONE_X=${{CURL({base}/dial/answered?id=${{ARG1}})}})",
+        " same => n,Return()",
+        "",
+        "[aiphone-dial-end]",
+        "; Hangup handler of a speed-dial call. ARG1 = call log id.",
+        f"exten => s,1,Set(AIPHONE_X=${{CURL({base}/dial/end?id=${{ARG1}}&status=${{DIALSTATUS}}"
+        "&answered=${ANSWEREDTIME}&cause=${HANGUPCAUSE})})",
+        " same => n,Return()",
         "",
         "[aiphone-trunk-in]",
         "; Calls coming in from the SIP provider are not accepted (outgoing only).",

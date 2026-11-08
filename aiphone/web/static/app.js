@@ -31,13 +31,13 @@ function pollStatus() {
 // Live transcript while a call is running.
 function pollCall(uuid) {
   const box = document.getElementById('transcript');
-  let count = box.querySelectorAll('.msg').length;
+  let count = box ? box.querySelectorAll('.msg').length : 0;
   const timer = setInterval(async () => {
     try {
       const r = await fetch('/api/calls/' + uuid);
       if (!r.ok) return;
       const c = await r.json();
-      if (c.transcript.length !== count) {
+      if (box && c.transcript.length !== count) {
         count = c.transcript.length;
         box.innerHTML = '';
         for (const t of c.transcript) {

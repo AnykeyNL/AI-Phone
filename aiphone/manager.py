@@ -82,6 +82,73 @@ class CallManager:
                 log.exception("Purging old calls failed")
 
     # --------------------------------------------------------------- inbound
+    # ---------------------------------------------------------- speed dials
+    # Speed-dial calls go straight from the phone to the SIP account in
+    # Asterisk, without AI-Phone in the audio path. The dialplan reports the
+    # start, the answer and the end, so they show up in the call log.
+    DIAL_RESULTS = {
+        "BUSY": ("failed", "busy"),
+        "NOANSWER": ("no-answer", "no answer"),
+        "CANCEL": ("no-answer", "you hung up before it was answered"),
+        "CONGESTION": ("failed", "the SIP provider refused the call"),
+        "CHANUNAVAIL": ("failed", "the SIP account is not available"),
+        "INVALIDARGS": ("failed", "invalid number"),
+    }
+
+    def _line_id(self, line: str) -> str:
+        for l in self.db.get("lines") or []:
+            if l["username"] == line:
+                return l["id"]
+        return line
+
+    def speed_dial_started(self, digits: str, line: str) -> str:
+        sd = next((x for x in self.db.get("speed_dials") or []
+                   if str(x.get("digits")) == digits), {})
+        number = asterisk.clean_number(sd.get("number", ""))
+        name = (sd.get("name") or "").strip()
+        label = f"{name} ({number})" if name else number or digits
+        uid = str(uuidlib.uuid4())
+        self.db.create_call(uid, "speed-dial", line=self._line_id(line),
+                            profile=f"{digits} → {label}", provider="sip",
+                            status="ringing")
+        self.notify()
+        log.info("Speed dial %s: calling %s", digits, label)
+        return uid
+
+    def speed_dial_answered(self, uid: str) -> None:
+        c = self.db.call(uid)
+        if c and c["status"] == "ringing":
+            self.db.update_call(uid, status="active", answered=time.time())
+            self.notify()
+
+    def speed_dial_ended(self, uid: str, dial_status: str, answered_secs: str = "",
+                         cause: str = "") -> None:
+        c = self.db.call(uid)
+        if not c or c["status"] not in ("ringing", "active"):
+            return
+        now = time.time()
+        fields: dict[str, Any] = {"ended": now}
+        dial_status = (dial_status or "").upper()
+        if dial_status == "ANSWER" or c["status"] == "active":
+            try:
+                talk = float(answered_secs)
+            except ValueError:
+                talk = 0
+            fields.update(status="completed", reason="call ended")
+            if talk > 0:
+                fields["answered"] = now - talk
+            elif not c.get("answered"):
+                fields["answered"] = now
+        else:
+            status, reason = self.DIAL_RESULTS.get(
+                dial_status, ("failed", f"call failed ({dial_status or 'unknown'})"))
+            if cause and dial_status not in self.DIAL_RESULTS:
+                reason += f", cause {cause}"
+            fields.update(status=status, reason=reason)
+        self.db.update_call(uid, **fields)
+        self.notify()
+        log.info("Speed-dial call %s ended: %s", uid, fields.get("reason"))
+
     def new_inbound(self, exten: str, line: str) -> str | None:
         """Called by the Asterisk dialplan (via CURL) when a phone dials ``exten``."""
         profile = self.db.profile_by_extension(exten)

@@ -22,7 +22,7 @@ Everything is managed from a web interface: API keys, AI profiles and prompts, A
 - **Live information**: the AI knows the date, time and where the phone is, and can search the web for the weather, news, opening hours and so on (Claude uses Anthropic's built-in web search; ChatGPT profiles look things up through OpenAI's web search).
 - **The AI can hang up** after saying goodbye (an `end_call` tool).
 - **Outbound calls**: ring the phone now from the web interface, on a schedule (once, daily, chosen weekdays), or via a webhook (Home Assistant, cron, doorbell…). Choose between reading out a message or starting a conversation, with retries when nobody answers.
-- **Speed dial to real phones**: connect a SIP account (for example CheapConnect) and give mobile numbers a short number, so dialling `5` rings your mobile. The phone can only call these numbers, nothing else.
+- **Speed dial to real phones**: connect a SIP account (for example CheapConnect) and give mobile numbers a short number, so dialling `5` rings your mobile. The phone can only call these numbers, nothing else. These calls appear in the call log too, with duration and result.
 - **Self-update** from the Settings page: check GitHub for a new version and install it with one click, or automatically every night.
 - **Call log with transcripts**, live while a call runs.
 - **Cost protection**: maximum call length and hang-up after silence (a handset left off the hook won't run up a bill).

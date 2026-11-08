@@ -82,7 +82,8 @@ def test_trunk_and_speed_dials():
     assert "context=aiphone-trunk-in" in pjsip
     profiles = [{"name": "Claude", "extension": "1", "enabled": True}]
     ext = asterisk.render_extensions(settings, profiles, 8080)
-    assert "Dial(PJSIP/0612345678@trunk,45)" in ext
+    assert "Dial(PJSIP/0612345678@trunk,45,U(aiphone-dial-answered^${AIPHONE_DIAL}))" in ext
+    assert "/internal/dial/start?digits=5" in ext and "hangup_handler_push" in ext
     assert "0611111111" not in ext  # extension 1 belongs to an AI profile
     assert "0622222222" not in ext  # disabled
     # Without a password the trunk is not generated and speed dials are inactive.
@@ -109,3 +110,26 @@ def test_update_log_status_ignores_previous_run(tmp_path, monkeypatch):
     assert updater.log_status(time.time() - 5)["failed"]
     log.write_text("Update started\nUpdate finished\n")
     assert updater.log_status(time.time() - 5)["finished"]
+
+
+def test_speed_dial_calls_are_logged(tmp_path):
+    from aiphone.db import Database
+    from aiphone.manager import CallManager
+    db = Database(tmp_path / "t.db")
+    db.set("speed_dials", [{"digits": "5", "name": "Mobile", "number": "06-1234 5678",
+                            "enabled": True}])
+    m = CallManager(db)
+    uid = m.speed_dial_started("5", "line1")
+    c = db.call(uid)
+    assert c["direction"] == "speed-dial" and c["status"] == "ringing"
+    assert c["profile"] == "5 → Mobile (0612345678)" and c["line"] == "line1"
+    m.speed_dial_answered(uid)
+    assert db.call(uid)["status"] == "active"
+    m.speed_dial_ended(uid, "ANSWER", "42")
+    c = db.call(uid)
+    assert c["status"] == "completed" and 41 <= c["ended"] - c["answered"] <= 43
+    for status, expect in (("BUSY", "failed"), ("NOANSWER", "no-answer"),
+                           ("CANCEL", "no-answer"), ("CHANUNAVAIL", "failed")):
+        uid = m.speed_dial_started("5", "line1")
+        m.speed_dial_ended(uid, status, "", "17")
+        assert db.call(uid)["status"] == expect, status

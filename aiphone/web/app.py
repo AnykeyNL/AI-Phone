@@ -582,7 +582,8 @@ def create_app(db, manager, scheduler) -> FastAPI:
         if not c:
             raise HTTPException(404)
         return render(request, "call_detail.html", c=c,
-                      live=c["status"] in ("ringing", "connecting", "active"))
+                      live=c["status"] in ("ringing", "connecting", "active"),
+                      can_hangup=uid in manager.sessions)
 
     @app.get("/api/calls/{uid}")
     async def api_call_detail(uid: str):
@@ -759,5 +760,29 @@ def create_app(db, manager, scheduler) -> FastAPI:
             raise HTTPException(403)
         uid = manager.new_inbound(exten, line)
         return uid or ""
+
+    def local_only(request: Request) -> None:
+        if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
+            raise HTTPException(403)
+
+    @app.get("/internal/dial/start", response_class=PlainTextResponse)
+    async def internal_dial_start(request: Request, digits: str = "", line: str = ""):
+        local_only(request)
+        return manager.speed_dial_started(digits, line)
+
+    @app.get("/internal/dial/answered", response_class=PlainTextResponse)
+    async def internal_dial_answered(request: Request, id: str = ""):
+        local_only(request)
+        if id:
+            manager.speed_dial_answered(id)
+        return "ok"
+
+    @app.get("/internal/dial/end", response_class=PlainTextResponse)
+    async def internal_dial_end(request: Request, id: str = "", status: str = "",
+                                answered: str = "", cause: str = ""):
+        local_only(request)
+        if id:
+            manager.speed_dial_ended(id, status, answered, cause)
+        return "ok"
 
     return app
