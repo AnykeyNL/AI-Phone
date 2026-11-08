@@ -99,6 +99,22 @@ def read_log() -> str:
         return ""
 
 
+def log_status(requested_at: float = 0) -> dict[str, Any]:
+    """The update log, and how far the update that was started at
+    ``requested_at`` has got. A log older than that is from a previous update
+    (update.sh empties it when it starts), so it is not reported as finished."""
+    try:
+        mtime = UPDATE_LOG.stat().st_mtime
+    except OSError:
+        mtime = 0
+    text = read_log()
+    waiting = bool(requested_at) and mtime < requested_at - 1
+    finished = not waiting and "Update finished" in text
+    return {"log": "" if waiting else text, "waiting": waiting, "finished": finished,
+            "failed": not waiting and not finished and "the update failed" in text,
+            "installed": installed()}
+
+
 async def auto_update_loop(db, manager) -> None:
     """Once a day at the chosen time: check, and update when nobody is on the phone."""
     last_day = ""

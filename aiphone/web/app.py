@@ -661,19 +661,27 @@ def create_app(db, manager, scheduler) -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             flash(request, f"Could not start the update: {exc}", "error")
             return RedirectResponse("/settings#updates", 303)
-        request.session["update_from"] = updater.installed().get("installed_at", 0)
+        db.set("update_requested_at", time.time())
         return RedirectResponse("/settings/update", 303)
 
     @app.get("/settings/update", response_class=HTMLResponse)
     async def update_progress(request: Request):
-        return render(request, "update.html", log=updater.read_log())
+        status = updater.log_status(db.get("update_requested_at") or 0)
+        return render(request, "update.html", status=status)
 
     @app.get("/api/update")
     async def update_status():
-        text = updater.read_log()
-        return {"log": text, "installed": updater.installed(),
-                "finished": "Update finished" in text,
-                "failed": bool(text) and "Update finished" not in text and "Error" in text}
+        return updater.log_status(db.get("update_requested_at") or 0)
+
+    def journal(lines: int = 300) -> str:
+        try:
+            out = subprocess.run(
+                ["journalctl", "-u", "aiphone", "-u", "asterisk", "-n", str(lines),
+                 "--no-pager", "-o", "short-iso"],
+                capture_output=True, text=True, timeout=10).stdout
+        except Exception as exc:  # noqa: BLE001
+            return f"Could not read the system log: {exc}"
+        return out or "(no log lines; is the user in the systemd-journal group?)"
 
     @app.post("/settings/password")
     async def change_password(request: Request):
@@ -738,14 +746,11 @@ def create_app(db, manager, scheduler) -> FastAPI:
 
     @app.get("/logs", response_class=HTMLResponse)
     async def logs_page(request: Request):
-        try:
-            out = subprocess.run(
-                ["journalctl", "-u", "aiphone", "-u", "asterisk", "-n", "300", "--no-pager",
-                 "-o", "short-iso"], capture_output=True, text=True, timeout=10).stdout
-        except Exception as exc:  # noqa: BLE001
-            out = f"Could not read the system log: {exc}"
-        return render(request, "logs.html", logs=out or "(no log lines; is the user in the "
-                      "systemd-journal group?)")
+        return render(request, "logs.html", logs=journal())
+
+    @app.get("/api/logs")
+    async def logs_api():
+        return {"log": journal()}
 
     # ----------------------------------------------------- Asterisk callback
     @app.get("/internal/call/new", response_class=PlainTextResponse)

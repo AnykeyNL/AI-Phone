@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Updating{% endblock %}
 {% block content %}
-<h1>Updating AI-Phone</h1>
-<p id="update-state">The update is running. AI-Phone restarts at the end; this page follows along.</p>
-<pre class="log" id="update-log">{{ log }}</pre>
+<h1>Updating AI-Phone <span class="pill live" id="live">live</span></h1>
+<p id="update-state">{% if status.finished %}<span class="pill ok">Update finished</span>{% elif status.failed %}<span class="pill bad">The update stopped with an error</span> See the log below.{% elif status.waiting %}Starting the update…{% else %}The update is running. AI-Phone restarts at the end; this page follows along.{% endif %}</p>
+<pre class="log" id="update-log">{{ status.log }}</pre>
 <p><a href="/settings#updates">Back to Settings</a></p>
 {% endblock %}
 {% block scripts %}<script>followUpdate();</script>{% endblock %}

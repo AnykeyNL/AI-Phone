@@ -73,26 +73,78 @@ document.querySelectorAll('table.copy code').forEach(c => c.addEventListener('cl
   setTimeout(() => c.style.outline = '', 600);
 }));
 
+// Replace a <pre> log's text, staying at the bottom if the reader was there.
+function setLog(pre, text) {
+  if (pre.textContent === text) return;
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  pre.textContent = text;
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function setLive(on, label) {
+  const el = document.getElementById('live');
+  if (!el) return;
+  el.textContent = label || (on ? 'live' : 'paused');
+  el.classList.toggle('off', !on);
+}
+
 // Follow the self-update log; the server restarts near the end.
 function followUpdate() {
   const pre = document.getElementById('update-log');
   const state = document.getElementById('update-state');
-  const timer = setInterval(async () => {
+  pre.scrollTop = pre.scrollHeight;
+  let restarting = false;
+  const poll = async () => {
     try {
-      const r = await fetch('/api/update');
-      if (!r.ok) return;
+      const r = await fetch('/api/update', {cache: 'no-store'});
+      if (r.status === 401) { location.href = '/login?next=/settings/update'; return; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
-      pre.textContent = j.log;
-      pre.scrollTop = 1e9;
+      restarting = false;
+      if (j.waiting) {
+        state.textContent = 'Starting the update…';
+      } else {
+        setLog(pre, j.log);
+      }
       if (j.finished) {
-        clearInterval(timer);
         state.innerHTML = '<span class="pill ok">Update finished</span> Now running version <code>' +
           (j.installed.commit || '').slice(0, 7) + '</code>.';
-      } else if (j.failed) {
-        state.innerHTML = '<span class="pill bad">The update stopped with an error</span> See the log below.';
+        setLive(false, 'done');
+        return;
       }
+      if (j.failed) {
+        state.innerHTML = '<span class="pill bad">The update stopped with an error</span> See the log below.';
+        setLive(false, 'failed');
+        return;
+      }
+      if (!j.waiting) state.textContent = 'The update is running. AI-Phone restarts at the end; this page follows along.';
+      setLive(true);
     } catch (e) {
-      state.textContent = 'AI-Phone is restarting…';
+      if (!restarting) state.textContent = 'AI-Phone is restarting…';
+      restarting = true;
+      setLive(true, 'reconnecting');
     }
-  }, 2000);
+    setTimeout(poll, 1500);
+  };
+  setTimeout(poll, 1000);
+}
+
+// Follow the system log.
+function followLog() {
+  const pre = document.getElementById('system-log');
+  const pause = document.getElementById('log-pause');
+  pre.scrollTop = pre.scrollHeight;
+  pause.addEventListener('change', () => setLive(!pause.checked));
+  const poll = async () => {
+    if (!pause.checked && !document.hidden) {
+      try {
+        const r = await fetch('/api/logs', {cache: 'no-store'});
+        if (r.status === 401) { location.href = '/login?next=/logs'; return; }
+        if (r.ok) { setLog(pre, (await r.json()).log); setLive(true); }
+        else setLive(false, 'offline');
+      } catch (e) { setLive(false, 'offline'); }
+    }
+    setTimeout(poll, 3000);
+  };
+  setTimeout(poll, 3000);
 }

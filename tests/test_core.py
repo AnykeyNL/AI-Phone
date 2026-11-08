@@ -89,3 +89,23 @@ def test_trunk_and_speed_dials():
     settings["trunk"]["password"] = ""
     assert "trunk" not in asterisk.render_pjsip(settings).split("[transport-udp]")[1]
     assert "@trunk" not in asterisk.render_extensions(settings, profiles, 8080)
+
+
+def test_update_log_status_ignores_previous_run(tmp_path, monkeypatch):
+    import os
+    from aiphone import updater
+    log = tmp_path / "update.log"
+    monkeypatch.setattr(updater, "UPDATE_LOG", log)
+    log.write_text("Update started\nUpdate finished 2026-11-01\n")
+    old = time.time() - 3600
+    os.utime(log, (old, old))
+    # A new update was just requested; the old log must not count as finished.
+    s = updater.log_status(time.time())
+    assert s["waiting"] and not s["finished"] and s["log"] == ""
+    log.write_text("Update started\nDownloading\n")
+    s = updater.log_status(time.time() - 5)
+    assert not s["waiting"] and not s["finished"] and "Downloading" in s["log"]
+    log.write_text("Update started\nError: the update failed (line 9).\n")
+    assert updater.log_status(time.time() - 5)["failed"]
+    log.write_text("Update started\nUpdate finished\n")
+    assert updater.log_status(time.time() - 5)["finished"]
