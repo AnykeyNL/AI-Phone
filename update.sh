@@ -28,9 +28,14 @@ PY
 REPO=$(read_setting update_repo)
 BRANCH=$(read_setting update_branch)
 TOKEN=$(read_setting update_token)
-if [[ -z "$REPO" ]]; then
-  REPO=$(/opt/aiphone/venv/bin/python -I -c "import json;print(json.load(open('/opt/aiphone/.install.json')).get('repo',''))" 2>/dev/null || true)
-fi
+installed_value() {
+  /opt/aiphone/venv/bin/python -I -c \
+    "import json,sys;print(json.load(open('/opt/aiphone/.install.json')).get(sys.argv[1],''))" "$1" \
+    2>/dev/null || true
+}
+# Default to the repository and branch the current version was installed from.
+[[ -n "$REPO" ]] || REPO=$(installed_value repo)
+[[ -n "$BRANCH" ]] || BRANCH=$(installed_value branch)
 REPO=${REPO:-AnykeyNL/AI-Phone}
 BRANCH=${BRANCH:-main}
 [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Invalid repository name: $REPO"; exit 1; }
