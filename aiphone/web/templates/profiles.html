@@ -14,7 +14,7 @@
     <td>{{ providers[p.provider].label }}</td>
     <td class="small">{{ p.config.model or '' }} {{ p.config.voice or p.config.tts_voice or '' }}</td>
     <td>{% if p.enabled %}<span class="pill ok">on</span>{% else %}<span class="pill">off</span>{% endif %}</td>
-    <td><a href="/profiles/{{ p.id }}">edit</a></td>
+    <td class="nowrap"><a href="/profiles/{{ p.id }}">edit</a> · <a href="/profiles/new?copy={{ p.id }}" title="Make a new profile with the same settings">copy</a></td>
   </tr>
   {% endfor %}
   </tbody>

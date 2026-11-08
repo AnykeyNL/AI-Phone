@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ profile.name or 'New profile' }}{% endblock %}
 {% block content %}
-<h1>{{ profile.name or 'New profile' }}</h1>
+<h1>{{ 'New profile' if profile.copy_of else (profile.name or 'New profile') }}</h1>
+{% if profile.copy_of %}<p class="muted">A copy of <strong>{{ profile.copy_of.name }}</strong> ({{ profile.copy_of.extension }}). Change the name and number, adjust anything else, and save to create it.</p>{% endif %}
 <form method="post" action="/profiles/{{ profile.id or 'new' }}" class="card">
   <div class="row">
     <label>Name <input name="name" value="{{ profile.name }}" required></label>
     <label>Number to dial <input name="extension" value="{{ profile.extension }}" required pattern="[0-9*#]+" inputmode="numeric"></label>
   </div>
   <label>AI provider
-    <select name="provider" onchange="location.href='/profiles/{{ profile.id or 'new' }}?provider='+this.value">
+    <select name="provider" onchange="location.href='/profiles/{{ profile.id or 'new' }}?{% if profile.copy_of %}copy={{ profile.copy_of.id }}&{% endif %}provider='+this.value">
       {% for key, p in providers.items() %}<option value="{{ key }}" {{ 'selected' if key == profile.provider }}>{{ p.label }}</option>{% endfor %}
     </select>
   </label>
@@ -39,6 +40,7 @@
   </div>
 </form>
 {% if profile.id %}
+<p><a class="button secondary" href="/profiles/new?copy={{ profile.id }}">Copy this profile</a></p>
 <form method="post" action="/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this profile?')">
   <button class="danger">Delete profile</button>
 </form>

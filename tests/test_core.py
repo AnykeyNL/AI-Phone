@@ -165,3 +165,23 @@ def test_incoming_sip_calls_ring_the_phone(tmp_path):
     uid = m.incoming_sip_started("0201234567")
     m.speed_dial_ended(uid, "NOANSWER")
     assert (db.call(uid)["status"], db.call(uid)["reason"]) == ("no-answer", "nobody answered")
+
+
+def test_copy_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIPHONE_ASTERISK_DIR", str(tmp_path / "ast"))
+    from fastapi.testclient import TestClient
+    from aiphone.db import Database
+    from aiphone.manager import CallManager
+    from aiphone.scheduler import Scheduler
+    from aiphone.web.app import create_app, hash_password
+    db = Database(tmp_path / "t.db")
+    db.set("admin_password_hash", hash_password("password1"))
+    m = CallManager(db)
+    c = TestClient(create_app(db, m, Scheduler(db, m)))
+    c.post("/login", data={"password": "password1"})
+    src = db.profile_by_extension("1")
+    page = c.get(f"/profiles/new?copy={src['id']}").text
+    assert 'value="Claude (copy)"' in page and 'value="3"' in page  # 2 is taken
+    assert "A copy of" in page and 'action="/profiles/new"' in page
+    assert len(db.profiles()) == 3  # nothing is created until Save
+    assert f"/profiles/new?copy={src['id']}" in c.get("/profiles").text
