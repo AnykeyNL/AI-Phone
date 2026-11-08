@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}System log{% endblock %}
 {% block content %}
-<h1>System log <a class="small" href="/logs">refresh</a></h1>
-<p class="muted">The last 300 lines from AI-Phone and Asterisk.</p>
-<pre class="log">{{ logs }}</pre>
+<h1>System log <span class="pill live" id="live">live</span></h1>
+<p class="muted">The last 300 lines from AI-Phone and Asterisk, updated every few seconds.
+  <label class="check small"><input type="checkbox" id="log-pause"> pause</label></p>
+<pre class="log" id="system-log">{{ logs }}</pre>
 {% endblock %}
-{% block scripts %}<script>document.querySelector('.log').scrollTop = 1e9;</script>{% endblock %}
+{% block scripts %}<script>followLog();</script>{% endblock %}

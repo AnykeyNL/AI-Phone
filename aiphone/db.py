@@ -94,6 +94,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_update": False,
     "auto_update_time": "03:30",
     "update_last_check": {},
+    "update_requested_at": 0,
     "location_city": "",
     "location_region": "",
     "location_country": "",
