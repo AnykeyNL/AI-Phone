@@ -211,12 +211,14 @@ def create_app(db, manager, scheduler) -> FastAPI:
     # ------------------------------------------------------------- dashboard
     async def status_data() -> dict[str, Any]:
         settings = db.all_settings()
-        data: dict[str, Any] = {"ami": False, "asterisk_error": "", "lines": [],
+        data: dict[str, Any] = {"ami": False, "asterisk_error": "", "lines": [], "trunk": "",
                                 "active": [], "version": manager.version}
         contacts = {}
         try:
             ami = await manager.ami()
             contacts = await ami.contacts()
+            if asterisk.trunk_active(settings):
+                data["trunk"] = await ami.trunk_status() or "Not registered"
             data["ami"] = True
         except Exception as exc:  # noqa: BLE001
             data["asterisk_error"] = str(exc) or type(exc).__name__
@@ -294,6 +296,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
         if not ext:
             flash(request, "The extension must be a number, e.g. 1 or 100.", "error")
             return RedirectResponse(f"/profiles/{pid}?provider={provider}", 303)
+        if ext in {d["digits"] for d in db.get("speed_dials") or []}:
+            flash(request, f"Number {ext} is already a speed dial.", "error")
+            return RedirectResponse(f"/profiles/{pid}?provider={provider}", 303)
         other = db.profile_by_extension(ext)
         if other and str(other["id"]) != pid:
             flash(request, f"Extension {ext} is already used by {other['name']}.", "error")
@@ -364,6 +369,62 @@ def create_app(db, manager, scheduler) -> FastAPI:
     async def phone_apply(request: Request):
         await apply_asterisk(request)
         return RedirectResponse(request.headers.get("referer") or "/phone", 303)
+
+    # ------------------------------------------------- SIP account + speed dial
+    @app.get("/speeddial", response_class=HTMLResponse)
+    async def speeddial_page(request: Request):
+        settings = db.all_settings()
+        dials = list(settings.get("speed_dials") or [])
+        dials += [{"digits": "", "name": "", "number": "", "enabled": True}] * 3
+        return render(request, "speeddial.html", t=settings["trunk"], dials=dials,
+                      status=await status_data(), profiles=db.profiles(),
+                      echo=settings.get("echo_test_extension"))
+
+    @app.post("/speeddial")
+    async def speeddial_save(request: Request):
+        form = await request.form()
+        trunk = dict(db.get("trunk"))
+        trunk["enabled"] = form_bool(form, "trunk_enabled")
+        for key in ("provider_name", "host", "username", "auth_username", "from_domain",
+                    "codecs", "public_ip"):
+            trunk[key] = (form.get(f"trunk_{key}") or "").strip()
+        for key in ("port", "dial_timeout"):
+            try:
+                trunk[key] = int(form.get(f"trunk_{key}"))
+            except (TypeError, ValueError):
+                pass
+        pw = (form.get("trunk_password") or "").strip()
+        if pw:
+            trunk["password"] = pw
+        if trunk["enabled"] and not (trunk["host"] and trunk["username"] and trunk["password"]):
+            flash(request, "To use the SIP account, fill in server, username and password.",
+                  "error")
+
+        taken = {p["extension"]: f"AI profile '{p['name']}'" for p in db.profiles()}
+        taken[str(db.get("echo_test_extension"))] = "the echo test"
+        dials, seen = [], set()
+        for i, digits in enumerate(form.getlist("sd_digits")):
+            digits = asterisk._clean_ext(digits)
+            number = asterisk.clean_number(form.getlist("sd_number")[i])
+            name = (form.getlist("sd_name")[i] or "").strip()
+            if not digits and not number:
+                continue
+            if not digits or len(number) < 3:
+                flash(request, f"Speed dial '{name or digits or number}' needs both a short "
+                      "number to dial and a phone number; it was not saved.", "error")
+                continue
+            if digits in taken or digits in seen:
+                flash(request, f"Speed dial {digits} is already used by "
+                      f"{taken.get(digits, 'another speed dial')}; it was not saved.", "error")
+                continue
+            seen.add(digits)
+            dials.append({"digits": digits, "name": name or number, "number": number,
+                          "enabled": f"sd_on_{i}" in form})
+        db.set("trunk", trunk)
+        db.set("speed_dials", sorted(dials, key=lambda d: d["digits"]))
+        flash(request, "SIP account and speed dials saved.")
+        await apply_asterisk(request)
+        return RedirectResponse("/speeddial", 303)
 
     # ------------------------------------------------------ outbound calls
     def call_request_from_form(form) -> dict[str, Any]:

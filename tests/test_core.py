@@ -63,3 +63,29 @@ def test_next_run_once_in_past_is_none():
     assert next_run({"kind": "once", "at_datetime": past}) is None
     future = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     assert next_run({"kind": "once", "at_datetime": future}) is not None
+
+
+def test_trunk_and_speed_dials():
+    settings = {
+        "sip_port": 5060, "codecs": "ulaw", "lines": [], "echo_test_extension": "600",
+        "trunk": {"enabled": True, "host": "sip.cheapconnect.net", "port": 5060,
+                  "username": "31201234567", "password": "pw", "dial_timeout": 45},
+        "speed_dials": [
+            {"digits": "5", "name": "Mobile", "number": "06-1234 5678", "enabled": True},
+            {"digits": "1", "name": "Clash", "number": "0611111111", "enabled": True},
+            {"digits": "7", "name": "Off", "number": "0622222222", "enabled": False},
+        ],
+    }
+    pjsip = asterisk.render_pjsip(settings)
+    assert "server_uri=sip:sip.cheapconnect.net:5060" in pjsip
+    assert "client_uri=sip:31201234567@sip.cheapconnect.net" in pjsip
+    assert "context=aiphone-trunk-in" in pjsip
+    profiles = [{"name": "Claude", "extension": "1", "enabled": True}]
+    ext = asterisk.render_extensions(settings, profiles, 8080)
+    assert "Dial(PJSIP/0612345678@trunk,45)" in ext
+    assert "0611111111" not in ext  # extension 1 belongs to an AI profile
+    assert "0622222222" not in ext  # disabled
+    # Without a password the trunk is not generated and speed dials are inactive.
+    settings["trunk"]["password"] = ""
+    assert "trunk" not in asterisk.render_pjsip(settings).split("[transport-udp]")[1]
+    assert "@trunk" not in asterisk.render_extensions(settings, profiles, 8080)

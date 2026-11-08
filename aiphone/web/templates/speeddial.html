@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Speed dial{% endblock %}
+{% block content %}
+<h1>Speed dial</h1>
+<p>Call real phone numbers from the old phone through a SIP account (for example CheapConnect). For safety the phone can <strong>only</strong> call the numbers below: dial the short number, e.g. <code>5</code>, and AI-Phone calls the mobile number behind it. Any other number is refused.</p>
+
+<form method="post" action="/speeddial">
+<section class="card">
+  <h2>Speed-dial numbers</h2>
+  <table class="list">
+    <thead><tr><th>On</th><th>Dial</th><th>Name</th><th>Calls this number</th></tr></thead>
+    <tbody>
+    {% for d in dials %}
+    <tr>
+      <td><input type="checkbox" name="sd_on_{{ loop.index0 }}" {{ 'checked' if d.enabled }}></td>
+      <td><input name="sd_digits" value="{{ d.digits }}" inputmode="numeric" pattern="[0-9*#]*" placeholder="5" style="max-width:6rem"></td>
+      <td><input name="sd_name" value="{{ d.name }}" placeholder="e.g. Richard mobile"></td>
+      <td><input name="sd_number" value="{{ d.number }}" inputmode="tel" placeholder="e.g. 0612345678"></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help" style="margin-top:.6rem">Enter the phone number the way your SIP provider wants it, e.g. <code>0612345678</code> or <code>0031612345678</code>. To remove a speed dial, clear its fields. Save to get more empty rows.
+  Numbers already in use: {% for p in profiles %}<code>{{ p.extension }}</code> {{ p.name }}{{ ', ' if not loop.last }}{% endfor %}, <code>{{ echo }}</code> echo test.</p>
+  <p class="help">Tip: with a rotary phone, dial the short number within the ATA's auto-dial delay (Phone &amp; ATA page), otherwise the default AI answers.</p>
+</section>
+
+<section class="card">
+  <h2>SIP account
+    {% if status.trunk == 'Registered' %}<span class="pill ok">registered</span>
+    {% elif status.trunk %}<span class="pill warn">{{ status.trunk|lower }}</span>
+    {% elif t.enabled %}<span class="pill warn">not active</span>{% endif %}</h2>
+  <label class="check"><input type="checkbox" name="trunk_enabled" {{ 'checked' if t.enabled }}> Use a SIP account for speed dials</label>
+  <div class="row">
+    <label>Provider name <input name="trunk_provider_name" value="{{ t.provider_name }}"></label>
+    <label>SIP server <input name="trunk_host" value="{{ t.host }}" placeholder="sip.cheapconnect.net"></label>
+    <label>Port <input type="number" name="trunk_port" value="{{ t.port }}"></label>
+  </div>
+  <div class="row">
+    <label>Username <input name="trunk_username" value="{{ t.username }}" autocomplete="off"></label>
+    <label>Password <input type="password" name="trunk_password" autocomplete="new-password" placeholder="{{ '••••••• (saved, leave empty to keep)' if t.password else '' }}"></label>
+  </div>
+  <details>
+    <summary>Advanced</summary>
+    <div class="row" style="margin-top:.8rem">
+      <label>Authentication username <input name="trunk_auth_username" value="{{ t.auth_username }}" placeholder="same as username"></label>
+      <label>SIP domain <input name="trunk_from_domain" value="{{ t.from_domain }}" placeholder="same as server"></label>
+      <label>Codecs <input name="trunk_codecs" value="{{ t.codecs }}"></label>
+    </div>
+    <div class="row">
+      <label>Public IP address <input name="trunk_public_ip" value="{{ t.public_ip }}" placeholder="only if you hear nothing"></label>
+      <label>Ring for (s) <input type="number" name="trunk_dial_timeout" value="{{ t.dial_timeout }}" min="10" max="180"></label>
+    </div>
+    <p class="help">Most providers, including CheapConnect, work behind a home router as-is. Fill in your public IP address only if calls connect but you hear nothing.</p>
+  </details>
+  <p class="help">For CheapConnect: the server is <code>sip.cheapconnect.net</code>, and the username and password are the SIP details shown in your CheapConnect account. Incoming calls from the SIP account are refused; it is used only for these speed dials.</p>
+</section>
+<div class="actions"><button>Save and apply to Asterisk</button></div>
+</form>
+{% endblock %}

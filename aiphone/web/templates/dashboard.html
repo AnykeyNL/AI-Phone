@@ -17,6 +17,9 @@
       {% else %}<span class="pill warn">not connected</span> <a class="small" href="/phone">setup guide</a>{% endif %}
       </td></tr>
     {% endfor %}
+    {% if status.trunk %}
+      <tr><th>SIP account</th><td>{% if status.trunk == 'Registered' %}<span class="pill ok">registered</span>{% else %}<span class="pill warn">{{ status.trunk|lower }}</span> <a class="small" href="/speeddial">check</a>{% endif %}</td></tr>
+    {% endif %}
     </table>
   </section>
   <section class="card">
