@@ -21,6 +21,8 @@ Everything is managed from a web interface: API keys, AI profiles and prompts, A
 - **Profiles = phone numbers.** Each profile has its own number, model, voice, prompt and greeting. Lift the handset and wait for the default AI, or dial `1` for Claude, `2` for ChatGPT, and so on (works with a rotary dial).
 - **The AI can hang up** after saying goodbye (an `end_call` tool).
 - **Outbound calls**: ring the phone now from the web interface, on a schedule (once, daily, chosen weekdays), or via a webhook (Home Assistant, cron, doorbell…). Choose between reading out a message or starting a conversation, with retries when nobody answers.
+- **Speed dial to real phones**: connect a SIP account (for example CheapConnect) and give mobile numbers a short number, so dialling `5` rings your mobile. The phone can only call these numbers, nothing else.
+- **Self-update** from the Settings page: check GitHub for a new version and install it with one click, or automatically every night.
 - **Call log with transcripts**, live while a call runs.
 - **Cost protection**: maximum call length and hang-up after silence (a handset left off the hook won't run up a bill).
 
@@ -61,7 +63,7 @@ Then open `http://<server-ip>:8080`:
 
 Options: `--port 8080` (web port), `--timezone Europe/Amsterdam`, `--asterisk-from-source`.
 
-**Upgrade**: `git pull && sudo ./install.sh`. Settings, profiles and the call log are kept.
+**Upgrade**: use *Check for updates* on the Settings page, or `git pull && sudo ./install.sh`. Settings, profiles and the call log are kept.
 
 **Uninstall**: `sudo ./uninstall.sh` (add `--purge` to delete settings and the call log).
 
@@ -82,6 +84,20 @@ The *Phone & ATA* page shows the exact values for your installation. In short, o
 | Enable Line Echo Canceller (LEC) | Yes |
 | Impedance | European / CTR21 instead of 600 Ω (less echo) |
 | Preferred Vocoder | PCMU, then PCMA |
+
+## Speed dial through a SIP account
+
+On the *Speed dial* page, enter your SIP account (for CheapConnect: server `sip.cheapconnect.net`, plus the SIP username and password from your CheapConnect account) and add speed-dial numbers, e.g. `5` → `0612345678`. Lift the handset, dial `5` within the auto-dial delay, and the call goes out through the SIP account.
+
+For safety the phone can only call the numbers on this page: every other number is refused, and incoming calls from the SIP account are rejected. The dashboard shows whether the SIP account is registered. If calls connect but you hear nothing, fill in your public IP address under *Advanced*.
+
+## Updating
+
+**From the web interface:** on the *Settings* page, under *Updates*, save a GitHub token (the repository is private) and click *Save and check for updates*. When a new version is available, *Update now* downloads it and re-runs the installer; AI-Phone restarts within a minute or two and keeps all settings. Tick *Install updates automatically every night* to let it update itself (it waits until no call is active).
+
+Create the token at GitHub → Settings → Developer settings → [Fine-grained tokens](https://github.com/settings/personal-access-tokens/new): give it access to only this repository with the permission *Contents: Read-only*.
+
+**From the command line:** `git pull && sudo ./install.sh` in your clone.
 
 ## Outbound calls and webhooks
 
