@@ -54,6 +54,17 @@ def trunk_active(settings: dict[str, Any]) -> bool:
     return bool(t.get("enabled") and t.get("host") and t.get("username") and t.get("password"))
 
 
+def incoming_endpoints(settings: dict[str, Any]) -> list[str]:
+    """Phone endpoints that ring for a call to the SIP account (may be empty)."""
+    if not trunk_active(settings):
+        return []
+    which = (settings.get("trunk") or {}).get("incoming") or "off"
+    if which == "off":
+        return []
+    return [_clean(l["username"]) for l in settings.get("lines") or []
+            if l.get("enabled") and (which == "all" or l["id"] == which)]
+
+
 PRIVATE_NETS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 
 
@@ -253,23 +264,43 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
         " same => n,Hangup()",
         "",
         "[aiphone-dial-answered]",
-        "; Runs when a speed-dial call is answered. ARG1 = call log id.",
+        "; Runs when a call through the SIP account is answered. ARG1 = call log id.",
         f"exten => s,1,Set(AIPHONE_X=${{CURL({base}/dial/answered?id=${{ARG1}})}})",
         " same => n,Return()",
         "",
         "[aiphone-dial-end]",
-        "; Hangup handler of a speed-dial call. ARG1 = call log id.",
+        "; Hangup handler of a call through the SIP account. ARG1 = call log id.",
         f"exten => s,1,Set(AIPHONE_X=${{CURL({base}/dial/end?id=${{ARG1}}&status=${{DIALSTATUS}}"
-        "&answered=${ANSWEREDTIME}&cause=${HANGUPCAUSE})})",
+        "&answered=${ANSWEREDTIME}&cause=${HANGUPCAUSE}"
+        "&peer=${URIENCODE(${DIALEDPEERNUMBER})})})",
         " same => n,Return()",
         "",
-        "[aiphone-trunk-in]",
-        "; Calls coming in from the SIP provider are not accepted (outgoing only).",
-        "exten => _[0-9a-zA-Z+*#]!,1,NoOp(Incoming call from SIP provider refused)",
-        " same => n,Hangup(21)",
-        "exten => s,1,Hangup(21)",
-        "",
     ]
+    ring = incoming_endpoints(settings)
+    ring_timeout = int(settings.get("ring_timeout") or 40)
+    out += ["[aiphone-trunk-in]"]
+    if ring:
+        dial = "&".join(f"PJSIP/{e}" for e in ring)
+        out += [
+            "; Calls to your SIP number ring the phone (Speed dial page).",
+            "exten => _[0-9a-zA-Z+*#]!,1,Goto(aiphone-trunk-in,s,1)",
+            "exten => h,1,NoOp(Call ended)",  # keeps the pattern above from matching 'h'
+            "exten => s,1,NoOp(Incoming call on the SIP account from ${CALLERID(num)})",
+            f" same => n,Set(AIPHONE_DIAL=${{CURL({base}/incoming/start?from="
+            "${URIENCODE(${CALLERID(num)})}&name=${URIENCODE(${CALLERID(name)})})})",
+            " same => n,Set(CHANNEL(hangup_handler_push)=aiphone-dial-end,s,1(${AIPHONE_DIAL}))",
+            f" same => n,Dial({dial},{ring_timeout},U(aiphone-dial-answered^${{AIPHONE_DIAL}}))",
+            " same => n,Hangup()",
+            "",
+        ]
+    else:
+        out += [
+            "; Calls coming in from the SIP provider are refused (Speed dial page).",
+            "exten => _[0-9a-zA-Z+*#]!,1,NoOp(Incoming call from SIP provider refused)",
+            " same => n,Hangup(21)",
+            "exten => s,1,Hangup(21)",
+            "",
+        ]
     return "\n".join(out)
 
 

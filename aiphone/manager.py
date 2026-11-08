@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import uuid as uuidlib
 from typing import Any
@@ -82,10 +83,19 @@ class CallManager:
                 log.exception("Purging old calls failed")
 
     # --------------------------------------------------------------- inbound
-    # ---------------------------------------------------------- speed dials
-    # Speed-dial calls go straight from the phone to the SIP account in
-    # Asterisk, without AI-Phone in the audio path. The dialplan reports the
-    # start, the answer and the end, so they show up in the call log.
+    # ------------------------------------------------- calls via the SIP account
+    # Speed-dial calls and incoming calls on the SIP account are bridged by
+    # Asterisk between the phone and the provider, without AI-Phone in the
+    # audio path. The dialplan reports the start, the answer and the end, so
+    # they show up in the call log.
+    INCOMING_RESULTS = {
+        "BUSY": ("no-answer", "the phone was busy"),
+        "NOANSWER": ("no-answer", "nobody answered"),
+        "CANCEL": ("no-answer", "the caller hung up before you answered"),
+        "CONGESTION": ("failed", "the phone could not be rung"),
+        "CHANUNAVAIL": ("failed", "the phone (ATA) is not connected"),
+        "": ("failed", "the phone could not be rung"),
+    }
     DIAL_RESULTS = {
         "BUSY": ("failed", "busy"),
         "NOANSWER": ("no-answer", "no answer"),
@@ -115,6 +125,17 @@ class CallManager:
         log.info("Speed dial %s: calling %s", digits, label)
         return uid
 
+    def incoming_sip_started(self, caller: str, caller_name: str = "") -> str:
+        number = asterisk.clean_number(caller or "") or "unknown number"
+        name = re.sub(r"[^\w .,'()-]", "", caller_name or "").strip()
+        label = f"{name} ({number})" if name and name != number else number
+        uid = str(uuidlib.uuid4())
+        self.db.create_call(uid, "incoming-sip", line="", profile=label, provider="sip",
+                            status="ringing")
+        self.notify()
+        log.info("Incoming call on the SIP account from %s", label)
+        return uid
+
     def speed_dial_answered(self, uid: str) -> None:
         c = self.db.call(uid)
         if c and c["status"] == "ringing":
@@ -122,12 +143,16 @@ class CallManager:
             self.notify()
 
     def speed_dial_ended(self, uid: str, dial_status: str, answered_secs: str = "",
-                         cause: str = "") -> None:
+                         cause: str = "", peer: str = "") -> None:
         c = self.db.call(uid)
         if not c or c["status"] not in ("ringing", "active"):
             return
         now = time.time()
         fields: dict[str, Any] = {"ended": now}
+        incoming = c["direction"] == "incoming-sip"
+        peer = re.sub(r"^PJSIP/|-[0-9a-f]+$", "", peer or "")
+        if incoming and peer:  # which phone port answered
+            fields["line"] = self._line_id(peer)
         dial_status = (dial_status or "").upper()
         if dial_status == "ANSWER" or c["status"] == "active":
             try:
@@ -140,9 +165,10 @@ class CallManager:
             elif not c.get("answered"):
                 fields["answered"] = now
         else:
-            status, reason = self.DIAL_RESULTS.get(
+            results = self.INCOMING_RESULTS if incoming else self.DIAL_RESULTS
+            status, reason = results.get(
                 dial_status, ("failed", f"call failed ({dial_status or 'unknown'})"))
-            if cause and dial_status not in self.DIAL_RESULTS:
+            if cause and dial_status not in results:
                 reason += f", cause {cause}"
             fields.update(status=status, reason=reason)
         self.db.update_call(uid, **fields)

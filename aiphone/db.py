@@ -86,6 +86,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "codecs": "alaw,ulaw",
         "public_ip": "",
         "dial_timeout": 60,
+        "incoming": "off",  # off | all | line1 | line2: which phone rings
     },
     "speed_dials": [],
     "update_repo": "",
