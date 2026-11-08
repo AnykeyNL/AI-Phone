@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-WEB_PORT=8080
+WEB_PORT=""
 TIMEZONE=""
 ASTERISK_FROM_SOURCE=0
 ASTERISK_SOURCE_VERSION="22-current"
@@ -47,7 +47,7 @@ export DEBIAN_FRONTEND=noninteractive
 # ------------------------------------------------------------------ packages
 say "Installing system packages"
 apt-get update -q
-apt-get install -y -q python3 python3-venv python3-pip curl ca-certificates rsync \
+apt-get install -y -q python3 python3-venv python3-pip curl ca-certificates rsync git \
   openssl sudo
 
 asterisk_available() {
@@ -134,8 +134,20 @@ if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
 fi
 "$APP_DIR/venv/bin/pip" install -q --upgrade pip
 "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+# Remember which version is installed, for "Check for updates" in the web interface.
+COMMIT=""; REPO=""; BRANCH="main"
+if [[ -d "$SRC_DIR/.git" ]] && command -v git >/dev/null; then
+  GIT=(git -c 'safe.directory=*' -C "$SRC_DIR")
+  COMMIT=$("${GIT[@]}" rev-parse HEAD 2>/dev/null || true)
+  BRANCH=$("${GIT[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+  [[ "$BRANCH" == "HEAD" ]] && BRANCH=main
+  REPO=$("${GIT[@]}" remote get-url origin 2>/dev/null | sed -E 's#^(https://([^@/]*@)?github\.com/|git@github\.com:)##; s#\.git$##' || true)
+fi
+printf '{"commit": "%s", "repo": "%s", "branch": "%s", "installed_at": %s}\n' \
+  "$COMMIT" "${REPO:-AnykeyNL/AI-Phone}" "$BRANCH" "$(date +%s)" >"$APP_DIR/.install.json"
 chown -R root:root "$APP_DIR"
 chmod -R a+rX "$APP_DIR"
+chmod 755 "$APP_DIR/update.sh"
 ok "Python environment ready"
 
 # ------------------------------------------------------------- data + secrets
@@ -143,6 +155,10 @@ mkdir -p "$DATA_DIR"
 chown aiphone:aiphone "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 BOOT="$DATA_DIR/bootstrap.json"
+if [[ -z "$WEB_PORT" && -f "$BOOT" ]]; then
+  WEB_PORT=$("$APP_DIR/venv/bin/python" -c "import json;print(json.load(open('$BOOT')).get('web_port', 8080))")
+fi
+WEB_PORT=${WEB_PORT:-8080}
 if [[ -f "$BOOT" ]]; then
   AMI_SECRET=$("$APP_DIR/venv/bin/python" -c "import json;print(json.load(open('$BOOT'))['ami_secret'])")
 else
@@ -185,6 +201,8 @@ chgrp asterisk "$AST_DIR"/aiphone/*.conf
 cat >/etc/sudoers.d/aiphone <<'EOF'
 # Lets the AI-Phone web interface change the time zone used for schedules.
 aiphone ALL=(root) NOPASSWD: /usr/bin/timedatectl set-timezone *
+# Lets "Update now" in the web interface start the (root) update service.
+aiphone ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block aiphone-update.service
 EOF
 chmod 440 /etc/sudoers.d/aiphone
 visudo -cf /etc/sudoers.d/aiphone >/dev/null
@@ -212,6 +230,7 @@ fi
 # ------------------------------------------------------------------ services
 say "Starting services"
 install -m 0644 "$APP_DIR/systemd/aiphone.service" /etc/systemd/system/aiphone.service
+install -m 0644 "$APP_DIR/systemd/aiphone-update.service" /etc/systemd/system/aiphone-update.service
 systemctl daemon-reload
 systemctl enable asterisk >/dev/null 2>&1 || true
 systemctl restart asterisk

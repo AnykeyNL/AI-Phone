@@ -5,6 +5,7 @@
 <div id="status" data-version="{{ status.version }}">
 {% if status.warnings %}<div class="flash error"><strong>Missing API keys</strong> — <a href="/settings">add them on the Settings page</a>:
   <ul>{% for w in status.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+{% if status.update_available %}<div class="flash">A new version of AI-Phone is available. <a href="/settings#updates">Update on the Settings page</a>.</div>{% endif %}
 <div class="grid">
   <section class="card">
     <h2>System</h2>
@@ -17,6 +18,9 @@
       {% else %}<span class="pill warn">not connected</span> <a class="small" href="/phone">setup guide</a>{% endif %}
       </td></tr>
     {% endfor %}
+    {% if status.trunk %}
+      <tr><th>SIP account</th><td>{% if status.trunk == 'Registered' %}<span class="pill ok">registered</span>{% else %}<span class="pill warn">{{ status.trunk|lower }}</span> <a class="small" href="/speeddial">check</a>{% endif %}</td></tr>
+    {% endif %}
     </table>
   </section>
   <section class="card">

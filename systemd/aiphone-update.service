@@ -1,0 +1,9 @@
+[Unit]
+Description=AI-Phone self-update (started from the web interface)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/aiphone/update.sh
+TimeoutStartSec=1800

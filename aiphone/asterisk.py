@@ -33,6 +33,30 @@ def _clean_ext(value: str) -> str:
     return re.sub(r"[^0-9*#]", "", str(value))
 
 
+def clean_number(value: str) -> str:
+    """A phone number as dialled through the trunk: digits and a leading +."""
+    value = str(value).strip().replace(" ", "").replace("-", "")
+    plus = value.startswith("+")
+    digits = re.sub(r"[^0-9]", "", value)
+    return ("+" if plus else "") + digits
+
+
+def _clean_host(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9.\-]", "", str(value))
+
+
+def _no_newlines(value: Any) -> str:
+    return str(value or "").replace("\n", "").replace("\r", "").strip()
+
+
+def trunk_active(settings: dict[str, Any]) -> bool:
+    t = settings.get("trunk") or {}
+    return bool(t.get("enabled") and t.get("host") and t.get("username") and t.get("password"))
+
+
+PRIVATE_NETS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+
 # ---------------------------------------------------------------- generation
 def render_pjsip(settings: dict[str, Any]) -> str:
     port = int(settings.get("sip_port") or 5060)
@@ -44,8 +68,15 @@ def render_pjsip(settings: dict[str, Any]) -> str:
         "type=transport",
         "protocol=udp",
         f"bind=0.0.0.0:{port}",
-        "",
     ]
+    trunk = settings.get("trunk") or {}
+    public_ip = _clean_host(trunk.get("public_ip") or "") if trunk_active(settings) else ""
+    if public_ip:
+        # Behind NAT: tell the provider our public address, keep the LAN direct.
+        out += [f"external_media_address={public_ip}",
+                f"external_signaling_address={public_ip}"]
+        out += [f"local_net={net}" for net in PRIVATE_NETS]
+    out.append("")
     for line in settings.get("lines", []):
         if not line.get("enabled"):
             continue
@@ -78,7 +109,70 @@ def render_pjsip(settings: dict[str, Any]) -> str:
             "qualify_frequency=30",
             "",
         ]
+    if trunk_active(settings):
+        out += render_trunk(trunk)
     return "\n".join(out)
+
+
+def render_trunk(trunk: dict[str, Any]) -> list[str]:
+    """PJSIP objects for an outgoing SIP account (e.g. CheapConnect)."""
+    host = _clean_host(trunk["host"])
+    port = int(trunk.get("port") or 5060)
+    user = _clean(trunk["username"])
+    auth_user = _clean(trunk.get("auth_username") or "") or user
+    domain = _clean_host(trunk.get("from_domain") or "") or host
+    codecs = ",".join(_clean(c) for c in str(trunk.get("codecs") or "alaw,ulaw").split(",")
+                      if c.strip())
+    server = f"sip:{host}:{port}"
+    return [
+        "; Outgoing SIP account. Only the speed-dial numbers in extensions.conf use it.",
+        "[trunk-auth]",
+        "type=auth",
+        "auth_type=userpass",
+        f"username={auth_user}",
+        f"password={_no_newlines(trunk['password'])}",
+        "",
+        "[trunk-reg]",
+        "type=registration",
+        "transport=transport-udp",
+        "outbound_auth=trunk-auth",
+        f"server_uri={server}",
+        f"client_uri=sip:{user}@{domain}",
+        f"contact_user={user}",
+        "expiration=600",
+        "retry_interval=60",
+        "forbidden_retry_interval=600",
+        "max_retries=10000",
+        "line=yes",
+        "endpoint=trunk",
+        "",
+        "[trunk]",
+        "type=aor",
+        f"contact={server}",
+        "qualify_frequency=60",
+        "",
+        "[trunk]",
+        "type=endpoint",
+        "transport=transport-udp",
+        "context=aiphone-trunk-in",
+        "disallow=all",
+        f"allow={codecs}",
+        "outbound_auth=trunk-auth",
+        "aors=trunk",
+        f"from_user={user}",
+        f"from_domain={domain}",
+        "direct_media=no",
+        "rtp_symmetric=yes",
+        "force_rport=yes",
+        "rewrite_contact=yes",
+        "dtmf_mode=rfc4733",
+        "",
+        "[trunk-identify]",
+        "type=identify",
+        "endpoint=trunk",
+        f"match={host}",
+        "",
+    ]
 
 
 def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
@@ -108,20 +202,38 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
             " same => n,Echo()",
             " same => n,Hangup()",
         ]
+    used = {echo_ext}
     for p in profiles:
         if not p.get("enabled"):
             continue
         ext = _clean_ext(p["extension"])
-        if not ext or ext == echo_ext:
+        if not ext or ext in used:
             continue
+        used.add(ext)
         name = re.sub(r"[^A-Za-z0-9 _\-()]", "", p["name"])
         out += [
             f"exten => {ext},1,NoOp(AI profile: {name})",
             f" same => n,Gosub(aiphone-connect,s,1({ext}))",
             " same => n,Hangup()",
         ]
+    if trunk_active(settings):
+        timeout = int((settings.get("trunk") or {}).get("dial_timeout") or 60)
+        for sd in settings.get("speed_dials") or []:
+            ext = _clean_ext(sd.get("digits", ""))
+            number = clean_number(sd.get("number", ""))
+            if not sd.get("enabled", True) or not ext or ext in used or len(number) < 3:
+                continue
+            used.add(ext)
+            name = re.sub(r"[^A-Za-z0-9 _\-()]", "", sd.get("name", ""))
+            out += [
+                f"exten => {ext},1,NoOp(Speed dial: {name})",
+                f" same => n,Dial(PJSIP/{number}@trunk,{timeout})",
+                " same => n,Hangup()",
+            ]
     out += [
-        "exten => _[0-9*#]!,1,NoOp(Unknown extension ${EXTEN})",
+        "; Anything else, including numbers that are not speed dials, is refused:",
+        "; the phone can only call the outside world through speed dials.",
+        "exten => _[0-9*#+]!,1,NoOp(Unknown extension ${EXTEN})",
         " same => n,Answer()",
         " same => n,Playtones(congestion)",
         " same => n,Wait(4)",
@@ -133,6 +245,12 @@ def render_extensions(settings: dict[str, Any], profiles: list[dict[str, Any]],
         " same => n,Wait(0.5)",
         f" same => n,AudioSocket(${{AIPHONE_UUID}},{AUDIOSOCKET_HOST}:{AUDIOSOCKET_PORT})",
         " same => n,Hangup()",
+        "",
+        "[aiphone-trunk-in]",
+        "; Calls coming in from the SIP provider are not accepted (outgoing only).",
+        "exten => _[0-9a-zA-Z+*#]!,1,NoOp(Incoming call from SIP provider refused)",
+        " same => n,Hangup(21)",
+        "exten => s,1,Hangup(21)",
         "",
     ]
     return "\n".join(out)
@@ -309,6 +427,12 @@ class AMIClient:
                     "dialplan reload"):
             out.append(f"> {cmd}\n{await self.command(cmd)}")
         return "\n".join(out)
+
+    async def trunk_status(self) -> str:
+        """Registration state of the SIP account, e.g. 'Registered' or 'Rejected'."""
+        text = await self.command("pjsip show registrations")
+        m = re.search(r"^\s*trunk-reg/\S+\s+\S+\s+(\w+)", text, re.M)
+        return m.group(1) if m else ""
 
     async def contacts(self) -> dict[str, dict[str, str]]:
         """Registered phones, keyed by endpoint name."""

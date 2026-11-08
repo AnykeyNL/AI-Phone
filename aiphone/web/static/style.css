@@ -99,3 +99,4 @@ ol.guide li { margin-bottom: .4rem; }
 }
 table.list input[type=checkbox] { min-width: 0; }
 table.list label.check { margin: .3rem 0 0; }
+details summary { cursor: pointer; color: var(--accent); margin-bottom: .4rem; }

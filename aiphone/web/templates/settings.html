@@ -36,6 +36,42 @@
 <div class="actions"><button>Save settings</button></div>
 </form>
 
+<section class="card" id="updates">
+  <h2>Updates</h2>
+  <table class="kv">
+    <tr><th>Installed version</th><td>{% if install.commit %}<code>{{ install.commit[:7] }}</code>{% else %}unknown{% endif %}{% if install.installed_at %} <span class="muted small">installed {{ install.installed_at|fmt_time }}</span>{% endif %}</td></tr>
+    {% if upd.checked_at %}
+    <tr><th>Last check</th><td>{{ upd.checked_at|fmt_time }}:
+      {% if upd.error %}<span class="pill bad">failed</span> <span class="small">{{ upd.error }}</span>
+      {% elif upd.available and upd.latest != install.commit %}<span class="pill warn">update available</span>
+      {% else %}<span class="pill ok">up to date</span>{% endif %}</td></tr>
+    {% endif %}
+  </table>
+  {% if upd.available and upd.latest != install.commit and not upd.error %}
+    <p><strong>New in <code>{{ (upd.latest or '')[:7] }}</code>:</strong></p>
+    <ul class="small">{% for c in upd.commits[-15:] %}<li><code>{{ c.sha }}</code> {{ c.message }}</li>{% else %}<li>{{ upd.latest_message }}</li>{% endfor %}</ul>
+    {% if upd.note %}<p class="muted small">{{ upd.note }}</p>{% endif %}
+    <form method="post" action="/settings/update" onsubmit="return confirm('Install the update now? AI-Phone restarts; this takes a minute or two.')">
+      <button>Update now</button>
+    </form>
+  {% endif %}
+  <form method="post" action="/settings/updates" style="margin-top:1rem">
+    <div class="row">
+      <label>GitHub repository <input name="update_repo" value="{{ s.update_repo }}" placeholder="{{ repo }}"></label>
+      <label>Branch <input name="update_branch" value="{{ s.update_branch }}" placeholder="{{ branch }}"></label>
+    </div>
+    <label>GitHub token <span class="muted small">— needed because the repository is private</span>
+      <input type="password" name="update_token" autocomplete="off" placeholder="{{ masked.update_token or 'not set' }}"></label>
+    <p class="help">Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> with access to only this repository and the permission <em>Contents: Read-only</em>. Leave empty to keep the saved token.
+    {% if s.update_token %}<label class="check small"><input type="checkbox" name="clear_update_token"> remove the saved token</label>{% endif %}</p>
+    <div class="row">
+      <label class="check"><input type="checkbox" name="auto_update" {{ 'checked' if s.auto_update }}> Install updates automatically every night</label>
+      <label>at <input type="time" name="auto_update_time" value="{{ s.auto_update_time }}"></label>
+    </div>
+    <button class="secondary">Save and check for updates</button>
+  </form>
+</section>
+
 <div class="grid">
 <section class="card">
   <h2>Time zone</h2>

@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, asterisk
+from .. import __version__, asterisk, updater
 from ..providers import PROVIDERS, default_profile_config, provider_fields
 from ..scheduler import describe, next_run
 
@@ -29,7 +29,8 @@ log = logging.getLogger("aiphone.web")
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
-SECRET_KEYS = ["openai_api_key", "anthropic_api_key", "deepgram_api_key", "elevenlabs_api_key"]
+SECRET_KEYS = ["openai_api_key", "anthropic_api_key", "deepgram_api_key", "elevenlabs_api_key",
+               "update_token"]
 PUBLIC_PATHS = ("/login", "/setup", "/static", "/internal/", "/api/webhook/")
 
 
@@ -211,12 +212,14 @@ def create_app(db, manager, scheduler) -> FastAPI:
     # ------------------------------------------------------------- dashboard
     async def status_data() -> dict[str, Any]:
         settings = db.all_settings()
-        data: dict[str, Any] = {"ami": False, "asterisk_error": "", "lines": [],
+        data: dict[str, Any] = {"ami": False, "asterisk_error": "", "lines": [], "trunk": "",
                                 "active": [], "version": manager.version}
         contacts = {}
         try:
             ami = await manager.ami()
             contacts = await ami.contacts()
+            if asterisk.trunk_active(settings):
+                data["trunk"] = await ami.trunk_status() or "Not registered"
             data["ami"] = True
         except Exception as exc:  # noqa: BLE001
             data["asterisk_error"] = str(exc) or type(exc).__name__
@@ -240,6 +243,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
                if p["provider"] == "claude_pipeline") and not settings.get("elevenlabs_api_key"):
             missing.append("ElevenLabs voice selected but no ElevenLabs API key")
         data["warnings"] = missing
+        upd = settings.get("update_last_check") or {}
+        data["update_available"] = bool(upd.get("available")) and \
+            upd.get("latest") != updater.installed().get("commit")
         return data
 
     @app.get("/", response_class=HTMLResponse)
@@ -293,6 +299,9 @@ def create_app(db, manager, scheduler) -> FastAPI:
         ext = "".join(ch for ch in form.get("extension", "") if ch.isdigit() or ch in "*#")
         if not ext:
             flash(request, "The extension must be a number, e.g. 1 or 100.", "error")
+            return RedirectResponse(f"/profiles/{pid}?provider={provider}", 303)
+        if ext in {d["digits"] for d in db.get("speed_dials") or []}:
+            flash(request, f"Number {ext} is already a speed dial.", "error")
             return RedirectResponse(f"/profiles/{pid}?provider={provider}", 303)
         other = db.profile_by_extension(ext)
         if other and str(other["id"]) != pid:
@@ -364,6 +373,62 @@ def create_app(db, manager, scheduler) -> FastAPI:
     async def phone_apply(request: Request):
         await apply_asterisk(request)
         return RedirectResponse(request.headers.get("referer") or "/phone", 303)
+
+    # ------------------------------------------------- SIP account + speed dial
+    @app.get("/speeddial", response_class=HTMLResponse)
+    async def speeddial_page(request: Request):
+        settings = db.all_settings()
+        dials = list(settings.get("speed_dials") or [])
+        dials += [{"digits": "", "name": "", "number": "", "enabled": True}] * 3
+        return render(request, "speeddial.html", t=settings["trunk"], dials=dials,
+                      status=await status_data(), profiles=db.profiles(),
+                      echo=settings.get("echo_test_extension"))
+
+    @app.post("/speeddial")
+    async def speeddial_save(request: Request):
+        form = await request.form()
+        trunk = dict(db.get("trunk"))
+        trunk["enabled"] = form_bool(form, "trunk_enabled")
+        for key in ("provider_name", "host", "username", "auth_username", "from_domain",
+                    "codecs", "public_ip"):
+            trunk[key] = (form.get(f"trunk_{key}") or "").strip()
+        for key in ("port", "dial_timeout"):
+            try:
+                trunk[key] = int(form.get(f"trunk_{key}"))
+            except (TypeError, ValueError):
+                pass
+        pw = (form.get("trunk_password") or "").strip()
+        if pw:
+            trunk["password"] = pw
+        if trunk["enabled"] and not (trunk["host"] and trunk["username"] and trunk["password"]):
+            flash(request, "To use the SIP account, fill in server, username and password.",
+                  "error")
+
+        taken = {p["extension"]: f"AI profile '{p['name']}'" for p in db.profiles()}
+        taken[str(db.get("echo_test_extension"))] = "the echo test"
+        dials, seen = [], set()
+        for i, digits in enumerate(form.getlist("sd_digits")):
+            digits = asterisk._clean_ext(digits)
+            number = asterisk.clean_number(form.getlist("sd_number")[i])
+            name = (form.getlist("sd_name")[i] or "").strip()
+            if not digits and not number:
+                continue
+            if not digits or len(number) < 3:
+                flash(request, f"Speed dial '{name or digits or number}' needs both a short "
+                      "number to dial and a phone number; it was not saved.", "error")
+                continue
+            if digits in taken or digits in seen:
+                flash(request, f"Speed dial {digits} is already used by "
+                      f"{taken.get(digits, 'another speed dial')}; it was not saved.", "error")
+                continue
+            seen.add(digits)
+            dials.append({"digits": digits, "name": name or number, "number": number,
+                          "enabled": f"sd_on_{i}" in form})
+        db.set("trunk", trunk)
+        db.set("speed_dials", sorted(dials, key=lambda d: d["digits"]))
+        flash(request, "SIP account and speed dials saved.")
+        await apply_asterisk(request)
+        return RedirectResponse("/speeddial", 303)
 
     # ------------------------------------------------------ outbound calls
     def call_request_from_form(form) -> dict[str, Any]:
@@ -540,8 +605,11 @@ def create_app(db, manager, scheduler) -> FastAPI:
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):
         s = db.all_settings()
+        repo, branch = updater.repo_and_branch(db)
         return render(request, "settings.html", s=s,
                       masked={k: mask(s.get(k, "")) for k in SECRET_KEYS},
+                      install=updater.installed(), repo=repo, branch=branch,
+                      upd=s.get("update_last_check") or {},
                       timezone=system_timezone(), server_ip=detect_ip())
 
     @app.post("/settings")
@@ -561,6 +629,51 @@ def create_app(db, manager, scheduler) -> FastAPI:
         db.set("log_transcripts", form_bool(form, "log_transcripts"))
         flash(request, "Settings saved.")
         return RedirectResponse("/settings", 303)
+
+    @app.post("/settings/updates")
+    async def update_settings(request: Request):
+        form = await request.form()
+        db.set("update_repo", (form.get("update_repo") or "").strip())
+        db.set("update_branch", (form.get("update_branch") or "").strip())
+        token = (form.get("update_token") or "").strip()
+        if form_bool(form, "clear_update_token"):
+            db.set("update_token", "")
+        elif token:
+            db.set("update_token", token)
+        db.set("auto_update", form_bool(form, "auto_update"))
+        db.set("auto_update_time", form.get("auto_update_time") or "03:30")
+        result = await updater.check(db)
+        if result.get("error"):
+            flash(request, f"Could not check for updates: {result['error']}", "error")
+        elif result["available"]:
+            flash(request, "An update is available.")
+        else:
+            flash(request, "AI-Phone is up to date.")
+        return RedirectResponse("/settings#updates", 303)
+
+    @app.post("/settings/update")
+    async def run_update(request: Request):
+        if manager.sessions:
+            flash(request, "A call is in progress; update after the call.", "error")
+            return RedirectResponse("/settings#updates", 303)
+        try:
+            updater.start_update()
+        except Exception as exc:  # noqa: BLE001
+            flash(request, f"Could not start the update: {exc}", "error")
+            return RedirectResponse("/settings#updates", 303)
+        request.session["update_from"] = updater.installed().get("installed_at", 0)
+        return RedirectResponse("/settings/update", 303)
+
+    @app.get("/settings/update", response_class=HTMLResponse)
+    async def update_progress(request: Request):
+        return render(request, "update.html", log=updater.read_log())
+
+    @app.get("/api/update")
+    async def update_status():
+        text = updater.read_log()
+        return {"log": text, "installed": updater.installed(),
+                "finished": "Update finished" in text,
+                "failed": bool(text) and "Update finished" not in text and "Error" in text}
 
     @app.post("/settings/password")
     async def change_password(request: Request):
