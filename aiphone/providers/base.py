@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from .. import localinfo
+
 if TYPE_CHECKING:
     from ..call import CallSession
 
@@ -27,9 +29,15 @@ class Provider:
             raise RuntimeError(f"No {label} API key configured (Settings page)")
         return key
 
+    @property
+    def web_search(self) -> bool:
+        return bool(self.config.get("allow_web_search", True))
+
     def instructions(self) -> str:
-        """System prompt, extended with outbound-call context when needed."""
+        """System prompt, extended with the date, the location, web search and
+        outbound-call context."""
         text = (self.config.get("instructions") or "").strip()
+        text += "\n\n" + localinfo.prompt_context(self.settings, self.web_search)
         req = self.call.info.request
         if req:
             if req.get("mode") == "message":

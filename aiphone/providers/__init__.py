@@ -23,6 +23,10 @@ COMMON_FIELDS: list[dict[str, Any]] = [
      "help": "Spoken as soon as the phone connects. Leave empty to wait for the caller."},
     {"key": "allow_end_call", "label": "Let the AI hang up", "type": "checkbox", "default": True,
      "help": "Gives the AI an end_call tool so it can hang up after saying goodbye."},
+    {"key": "allow_web_search", "label": "Let the AI search the web", "type": "checkbox",
+     "default": True,
+     "help": ("For live information such as the weather, news and opening hours. "
+              "Searches cost a little extra per call; set your location on the Settings page.")},
     {"key": "output_gain_db", "label": "Output volume (dB)", "type": "number", "default": 0,
      "step": 1, "help": "Raise or lower the AI's voice in the handset, e.g. -3 or 3."},
 ]
@@ -56,6 +60,10 @@ PROVIDERS: dict[str, dict[str, Any]] = {
              "help": "Only used for the call log. Leave empty to skip."},
             {"key": "speed", "label": "Speaking speed", "type": "number", "default": 1.0,
              "step": 0.05},
+            {"key": "search_model", "label": "Web search model", "type": "text",
+             "default": "gpt-4.1-mini", "suggestions": ["gpt-4.1-mini", "gpt-4.1", "gpt-5-mini"],
+             "help": ("The Realtime model can't search by itself; this OpenAI model looks "
+                      "things up for it. gpt-4.1-mini is fast and cheap.")},
         ],
     },
     "claude_pipeline": {

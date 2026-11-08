@@ -13,13 +13,22 @@ import asyncio
 import base64
 import json
 
+import httpx
 import websockets
 
-from .. import audio
+from .. import audio, localinfo
 from .base import END_CALL_DESCRIPTION, Provider
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
+RESPONSES_URL = "https://api.openai.com/v1/responses"
 SEND_EVERY_FRAMES = 2  # 40 ms of audio per append event
+SEARCH_TIMEOUT = 25
+
+WEB_SEARCH_DESCRIPTION = (
+    "Look up live or recent information on the web: weather and forecasts, news, sports "
+    "results, opening hours, prices, travel information. Write the question as a complete "
+    "search query including the place and day it is about."
+)
 
 
 class OpenAIRealtimeProvider(Provider):
@@ -33,6 +42,9 @@ class OpenAIRealtimeProvider(Provider):
         self._end_requested = False
         self._hangup_after_response = False
         self._response_active = False
+        self._idle = asyncio.Event()
+        self._idle.set()
+        self._searches: set[asyncio.Task] = set()
 
     # ------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -83,17 +95,28 @@ class OpenAIRealtimeProvider(Provider):
                            "speed": float(c.get("speed") or 1.0)},
             },
         }
+        tools = []
         if c.get("allow_end_call", True):
-            session["tools"] = [{
+            tools.append({
                 "type": "function", "name": "end_call", "description": END_CALL_DESCRIPTION,
                 "parameters": {"type": "object", "properties": {}, "required": []},
-            }]
+            })
+        if self.web_search:
+            tools.append({
+                "type": "function", "name": "web_search", "description": WEB_SEARCH_DESCRIPTION,
+                "parameters": {"type": "object", "required": ["query"], "properties": {
+                    "query": {"type": "string", "description": "What to look up"}}},
+            })
+        if tools:
+            session["tools"] = tools
             session["tool_choice"] = "auto"
         return session
 
     async def close(self) -> None:
         if self._recv_task:
             self._recv_task.cancel()
+        for task in self._searches:
+            task.cancel()
         if self.ws is not None:
             await self.ws.close()
 
@@ -146,14 +169,24 @@ class OpenAIRealtimeProvider(Provider):
             self.call.add_transcript("assistant", ev.get("transcript", ""))
         elif t == "response.created":
             self._response_active = True
+            self._idle.clear()
         elif t == "response.function_call_arguments.done":
-            if ev.get("name") == "end_call":
+            if ev.get("name") == "web_search":
+                try:
+                    query = json.loads(ev.get("arguments") or "{}").get("query", "")
+                except ValueError:
+                    query = ""
+                task = asyncio.create_task(self._web_search(ev.get("call_id"), query))
+                self._searches.add(task)
+                task.add_done_callback(self._searches.discard)
+            elif ev.get("name") == "end_call":
                 self._end_requested = True
                 await self._send({"type": "conversation.item.create", "item": {
                     "type": "function_call_output", "call_id": ev.get("call_id"),
                     "output": json.dumps({"ok": True})}})
         elif t == "response.done":
             self._response_active = False
+            self._idle.set()
             status = (ev.get("response") or {}).get("status")
             if self._end_requested:
                 self.call.add_transcript("system", "AI ended the call")
@@ -184,3 +217,57 @@ class OpenAIRealtimeProvider(Provider):
             await self._send({"type": "conversation.item.truncate", "item_id": item,
                               "content_index": 0, "audio_end_ms": played[item]})
         self.log.info("Barge-in: AI interrupted after %s ms", played.get(item, 0))
+
+    # ----------------------------------------------------------- web search
+    async def _web_search(self, call_id: str, query: str) -> None:
+        """Answer the model's web_search call with OpenAI's web search tool."""
+        self.log.info("Web search: %s", query)
+        self.call.add_transcript("system", f"Searched the web: {query}")
+        try:
+            output = await self.search(query)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            self.log.warning("Web search failed: %s", exc)
+            output = f"The search failed ({exc}). Tell the caller you couldn't look it up."
+        try:
+            await self._send({"type": "conversation.item.create", "item": {
+                "type": "function_call_output", "call_id": call_id, "output": output}})
+            # Only one response can run at a time: wait for "let me check" to finish.
+            await asyncio.wait_for(self._idle.wait(), 30)
+            if not self._end_requested:
+                await self._send({"type": "response.create"})
+        except (websockets.ConnectionClosed, asyncio.TimeoutError):
+            pass
+
+    async def search(self, query: str) -> str:
+        tool: dict = {"type": "web_search"}
+        loc = localinfo.search_location(self.settings)
+        if loc:
+            tool["user_location"] = loc
+        body = {
+            "model": self.config.get("search_model") or "gpt-4.1-mini",
+            "tools": [tool],
+            "instructions": (
+                f"Current date and time: {localinfo.now_text()}. "
+                + (f"The person asking is in {localinfo.location_text(self.settings)}. "
+                   if localinfo.location_text(self.settings) else "")
+                + "Search the web and answer in at most four short plain-text sentences "
+                "with the concrete facts and numbers; no links, lists or markdown."),
+            "input": query,
+        }
+        key = self.require_key("openai_api_key", "OpenAI")
+        async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT) as client:
+            r = await client.post(RESPONSES_URL, json=body,
+                                  headers={"Authorization": f"Bearer {key}"})
+            if r.status_code >= 400:
+                try:
+                    msg = r.json()["error"]["message"]
+                except (ValueError, KeyError, TypeError):
+                    msg = r.text[:200]
+                raise RuntimeError(f"OpenAI {r.status_code}: {msg}")
+            data = r.json()
+        texts = [part.get("text", "") for item in data.get("output", [])
+                 if item.get("type") == "message"
+                 for part in item.get("content", []) if part.get("type") == "output_text"]
+        return " ".join(t.strip() for t in texts if t.strip()) or "No results found."
