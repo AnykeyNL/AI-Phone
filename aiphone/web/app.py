@@ -261,9 +261,32 @@ def create_app(db, manager, scheduler) -> FastAPI:
         return render(request, "profiles.html", profiles=db.profiles(), providers=PROVIDERS,
                       default_extension=db.get("default_extension"))
 
+    def free_extension(start: str) -> str:
+        """The first unused number after ``start``, for a copied profile."""
+        taken = {p["extension"] for p in db.profiles()}
+        taken |= {d["digits"] for d in db.get("speed_dials") or []}
+        taken.add(str(db.get("echo_test_extension")))
+        n = int(start) + 1 if start.isdigit() else 1
+        while str(n) in taken:
+            n += 1
+        return str(n)
+
     @app.get("/profiles/{pid}", response_class=HTMLResponse)
     async def profile_edit(request: Request, pid: str):
-        if pid == "new":
+        copy_of = request.query_params.get("copy", "")
+        if pid == "new" and copy_of.isdigit() and db.profile(int(copy_of)):
+            # A new profile pre-filled from an existing one; saved only on Save.
+            src = db.profile(int(copy_of))
+            provider = request.query_params.get("provider", src["provider"])
+            profile = {"id": None, "name": f"{src['name']} (copy)",
+                       "extension": free_extension(src["extension"]), "provider": provider,
+                       "enabled": src["enabled"], "config": dict(src["config"]),
+                       "copy_of": src}
+            if provider != src["provider"]:
+                profile["config"] = {k: v for k, v in src["config"].items() if k in (
+                    "instructions", "greeting", "allow_end_call", "allow_web_search",
+                    "output_gain_db")}
+        elif pid == "new":
             provider = request.query_params.get("provider", "openai_realtime")
             profile = {"id": None, "name": "", "extension": "", "provider": provider,
                        "enabled": True, "config": default_profile_config(provider)}
