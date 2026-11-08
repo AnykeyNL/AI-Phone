@@ -13,7 +13,7 @@
     {% for d in dials %}
     <tr>
       <td><input type="checkbox" name="sd_on_{{ loop.index0 }}" {{ 'checked' if d.enabled }}></td>
-      <td><input name="sd_digits" value="{{ d.digits }}" inputmode="numeric" pattern="[0-9*#]*" placeholder="5" style="max-width:6rem"></td>
+      <td><input name="sd_digits" value="{{ d.digits }}" inputmode="numeric" pattern="[0-9*#]*" placeholder="e.g. 5" style="max-width:6rem"></td>
       <td><input name="sd_name" value="{{ d.name }}" placeholder="e.g. Richard mobile"></td>
       <td><input name="sd_number" value="{{ d.number }}" inputmode="tel" placeholder="e.g. 0612345678"></td>
     </tr>

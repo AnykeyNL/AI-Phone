@@ -659,9 +659,7 @@ def create_app(db, manager, scheduler) -> FastAPI:
         try:
             updater.start_update()
         except Exception as exc:  # noqa: BLE001
-            detail = getattr(exc, "stderr", b"") or b""
-            flash(request, f"Could not start the update: {exc} {detail.decode(errors='ignore')}",
-                  "error")
+            flash(request, f"Could not start the update: {exc}", "error")
             return RedirectResponse("/settings#updates", 303)
         request.session["update_from"] = updater.installed().get("installed_at", 0)
         return RedirectResponse("/settings/update", 303)

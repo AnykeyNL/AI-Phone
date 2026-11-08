@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -81,8 +82,14 @@ async def check(db) -> dict[str, Any]:
 
 def start_update() -> None:
     """Start the update in a separate root service, so it survives our restart."""
-    subprocess.run(["sudo", "-n", "/usr/bin/systemctl", "start", "--no-block",
-                    "aiphone-update.service"], check=True, capture_output=True, timeout=15)
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.run(["sudo", "-n", "/usr/bin/systemctl", "start", "--no-block",
+                               "aiphone-update.service"], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL, stderr=err, timeout=30)
+        if proc.returncode:
+            err.seek(0)
+            raise RuntimeError(err.read().decode(errors="replace").strip()
+                               or f"exit code {proc.returncode}")
 
 
 def read_log() -> str:
